@@ -41,6 +41,27 @@
         opt.value = opt.textContent = unit;
         $("unit").appendChild(opt);
       });
+
+      // Setup listeners for dynamic label and total calculation
+      $("unit").addEventListener("change", updateUnitLabel);
+      $("cost").addEventListener("input", updateTotalValue);
+      $("amount").addEventListener("input", updateTotalValue);
+    }
+
+    function updateUnitLabel() {
+      $("unit-label").textContent = $("unit").value;
+      updateTotalValue();
+    }
+
+    function updateTotalValue() {
+      const amount = parseFloat($("amount").value);
+      const cost = parseFloat($("cost").value);
+      if (!isNaN(amount) && !isNaN(cost)) {
+        const total = (amount * cost).toFixed(2);
+        $("total-value").textContent = `Total Value: $${total}`;
+      } else {
+        $("total-value").textContent = "";
+      }
     }
 
     function addTransfer() {
@@ -64,12 +85,14 @@
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
 
-      const logId = push(fromRef, log).key;
+      push(fromRef, log);
       push(toRef, log);
 
-      // Clear form
+      // Reset form
       ["product", "amount", "cost", "comment"].forEach(id => $(id).value = "");
       $("unit").selectedIndex = 0;
+      updateUnitLabel();
+      $("total-value").textContent = "";
 
       loadLogs();
     }
@@ -193,6 +216,7 @@
     window.onload = () => {
       setupUI();
       $("date").valueAsDate = new Date();
+      updateUnitLabel();
       loadLogs();
     };
   </script>
@@ -233,16 +257,22 @@
       border-radius: 6px;
     }
 
-    @media (min-width: 600px) {
-      input, select, button {
-        width: auto;
-        margin-right: 10px;
-      }
+    #total-value {
+      font-size: 0.95rem;
+      color: #333;
+      margin-bottom: 10px;
+    }
 
+    @media (min-width: 600px) {
       .form-row {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
+      }
+
+      input, select {
+        width: auto;
+        flex: 1;
       }
 
       label {
@@ -281,7 +311,8 @@
   </div>
 
   <div class="form-row">
-    <label>Cost per unit: <input type="number" id="cost" placeholder="$"></label>
+    <label>Cost per <span id="unit-label">unit</span>: <input type="number" id="cost" placeholder="$"></label>
+    <div id="total-value"></div>
     <label>Comment: <input id="comment" placeholder="Optional comment"></label>
   </div>
 
