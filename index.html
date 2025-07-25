@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Aidan Food Transfer Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: auto; }
+    h1, h2 { text-align: center; }
+    .section { margin-bottom: 30px; }
+    .transfer-form input, .transfer-form select, .transfer-form button {
+      margin: 5px; padding: 8px; font-size: 1em;
+    }
+    .log-month { display: none; }
+    .active-month { display: block; }
+    .log-entry { padding: 6px; margin: 4px 0; border-left: 4px solid; }
+    .outgoing { color: red; border-color: red; }
+    .incoming { color: green; border-color: green; }
+    .month-nav { text-align: center; margin-top: 10px; }
+    .month-nav button { margin: 0 5px; }
+    details { margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+  <h1>Aidan Food Transfer Tracker</h1>
+
+  <div class="section transfer-form">
+    <h2>Record Transfer</h2>
+    <input type="date" id="transferDate" />
+    <select id="locationFrom">
+      <option value="Prohibition">Prohibition</option>
+      <option value="Tulia">Tulia</option>
+      <option value="Beacon">Beacon</option>
+      <option value="Ce Soir">Ce Soir</option>
+    </select>
+    <select id="locationTo">
+      <option value="Prohibition">Prohibition</option>
+      <option value="Tulia">Tulia</option>
+      <option value="Beacon">Beacon</option>
+      <option value="Ce Soir">Ce Soir</option>
+    </select>
+    <input type="text" id="productName" placeholder="Product Name" />
+    <input type="number" id="amount" placeholder="Amount" />
+    <select id="unit">
+      <option>oz</option><option>lb</option><option>kg</option>
+      <option>fl oz</option><option>ml</option><option>L</option>
+    </select>
+    <button onclick="recordTransfer()">Submit Transfer</button>
+  </div>
+
+  <div class="section">
+    <h2>Monthly Transfer Logs</h2>
+    <div id="monthLogsContainer"></div>
+    <div class="month-nav">
+      <button onclick="changeMonth(-1)">Previous</button>
+      <span id="currentMonthLabel"></span>
+      <button onclick="changeMonth(1)">Next</button>
+    </div>
+    <button onclick="downloadMonthlyLog()">Download Monthly Report (Excel)</button>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+    import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
+      authDomain: "aidan-food-tracker.firebaseapp.com",
+      projectId: "aidan-food-tracker",
+      storageBucket: "aidan-food-tracker.firebasestorage.app",
+      messagingSenderId: "397728832351",
+      appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    async function recordTransfer() {
+      const date = document.getElementById("transferDate").value;
+      const from = document.getElementById("locationFrom").value;
+      const to = document.getElementById("locationTo").value;
+      const product = document.getElementById("productName").value;
+      const amount = parseFloat(document.getElementById("amount").value);
+      const unit = document.getElementById("unit").value;
+
+      if (!date || !from || !to || !product || isNaN(amount)) {
+        alert("Fill in all fields");
+        return;
+      }
+
+      const monthKey = date.slice(0, 7); // YYYY-MM
+      const timestamp = Date.now();
+
+      const logEntry = { date, product, amount, unit, from, to, timestamp };
+
+      // Save outgoing log
+      push(ref(db, `transfers/${monthKey}/${from}`), {
+        ...logEntry,
+        direction: "out"
+      });
+
+      // Save incoming log
+      push(ref(db, `transfers/${monthKey}/${to}`), {
+        ...logEntry,
+        direction: "in"
+      });
+
+      alert("Transfer recorded!");
+    }
+
+    // Swipeable month log viewer
+    let currentMonthOffset = 0;
+    const monthContainer = document.getElementById("monthLogsContainer");
+    const monthLabel = document.getElementById("currentMonthLabel");
+
+    function getMonthString(offset = 0) {
+      const today = new Date();
+      today.setMonth(today.getMonth() + offset);
+      return today.toISOString().slice(0, 7); // YYYY-MM
+    }
+
+    function changeMonth(offset) {
+      currentMonthOffset += offset;
+      loadLogs();
+    }
+
+    function loadLogs() {
+      const monthKey = getMonthString(currentMonthOffset);
+      monthLabel.textContent = monthKey;
+
+      const transfersRef = ref(db, `transfers/${monthKey}`);
+      onValue(transfersRef, (snapshot) => {
+        const data = snapshot.val();
+        monthContainer.innerHTML = "";
+
+        if (!data) {
+          monthContainer.innerHTML = "<p>No logs for this month.</p>";
+          return;
+        }
+
+        Object.entries(data).forEach(([location, logs]) => {
+          let details = `<details open><summary><strong>${location}</strong></summary>`;
+          Object.values(logs)
+            .sort((a, b) => a.timestamp - b.timestamp)
+            .forEach(entry => {
+              const style = entry.direction === 'in' ? 'incoming' : 'outgoing';
+              const sign = entry.direction === 'in' ? '+' : '-';
+              details += `<div class="log-entry ${style}">
+                ${entry.date} | ${sign}${entry.amount} ${entry.unit} ${entry.product} 
+                (${entry.direction === 'in' ? 'from ' + entry.from : 'to ' + entry.to})
+              </div>`;
+            });
+          details += "</details>";
+          monthContainer.innerHTML += details;
+        });
+      });
+    }
+
+    async function downloadMonthlyLog() {
+      const monthKey = getMonthString(currentMonthOffset);
+      const snapshot = await get(ref(db, `transfers/${monthKey}`));
+      const data = snapshot.val();
+
+      if (!data) {
+        alert("No data for this month.");
+        return;
+      }
+
+      let csv = "Location,Date,Direction,Product,Amount,Unit,From,To\n";
+      Object.entries(data).forEach(([location, logs]) => {
+        Object.values(logs).forEach(entry => {
+          csv += `${location},${entry.date},${entry.direction},${entry.product},${entry.amount},${entry.unit},${entry.from},${entry.to}\n`;
+        });
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `FoodTransfers_${monthKey}.csv`;
+      link.click();
+    }
+
+    window.changeMonth = changeMonth;
+    window.downloadMonthlyLog = downloadMonthlyLog;
+    window.recordTransfer = recordTransfer;
+
+    loadLogs(); // Initial load
+  </script>
+</body>
+</html>
