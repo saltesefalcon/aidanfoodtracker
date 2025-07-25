@@ -3,62 +3,65 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Aidan Food Transfer Tracker</title>
+  <title>Food Transfer Tracker</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: auto; }
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: auto; padding: 20px; }
     h1, h2 { text-align: center; }
-    .section { margin-bottom: 30px; }
-    .transfer-form input, .transfer-form select, .transfer-form button {
-      margin: 5px; padding: 8px; font-size: 1em;
-    }
-    .log-month { display: none; }
-    .active-month { display: block; }
-    .log-entry { padding: 6px; margin: 4px 0; border-left: 4px solid; }
-    .outgoing { color: red; border-color: red; }
-    .incoming { color: green; border-color: green; }
-    .month-nav { text-align: center; margin-top: 10px; }
+    .section { margin: 30px 0; }
+    .log-entry { margin: 4px 0; padding: 6px; border-left: 4px solid gray; }
+    .positive { color: green; border-left-color: green; }
+    .negative { color: red; border-left-color: red; }
+    .month-nav { text-align: center; margin-bottom: 10px; }
     .month-nav button { margin: 0 5px; }
-    details { margin-bottom: 15px; }
+    details { margin-bottom: 20px; }
   </style>
 </head>
 <body>
-  <h1>Aidan Food Transfer Tracker</h1>
+  <h1>Food Transfer Tracker</h1>
 
-  <div class="section transfer-form">
-    <h2>Record Transfer</h2>
+  <div class="section">
+    <h2>Log a Transfer</h2>
     <input type="date" id="transferDate" />
-    <select id="locationFrom">
+    <select id="fromLocation">
       <option value="Prohibition">Prohibition</option>
       <option value="Tulia">Tulia</option>
       <option value="Beacon">Beacon</option>
       <option value="Ce Soir">Ce Soir</option>
     </select>
-    <select id="locationTo">
+    to
+    <select id="toLocation">
       <option value="Prohibition">Prohibition</option>
       <option value="Tulia">Tulia</option>
       <option value="Beacon">Beacon</option>
       <option value="Ce Soir">Ce Soir</option>
     </select>
-    <input type="text" id="productName" placeholder="Product Name" />
-    <input type="number" id="amount" placeholder="Amount" />
+    <br/><br/>
+    Product: <input type="text" id="productName" placeholder="e.g. Chicken Thighs" />
+    Amount: <input type="number" id="productAmount" />
     <select id="unit">
-      <option>oz</option><option>lb</option><option>kg</option>
-      <option>fl oz</option><option>ml</option><option>L</option>
+      <option value="oz">oz</option>
+      <option value="lb">lb</option>
+      <option value="kg">kg</option>
+      <option value="fl oz">fl oz</option>
+      <option value="ml">ml</option>
+      <option value="L">L</option>
     </select>
-    <button onclick="recordTransfer()">Submit Transfer</button>
+    <button onclick="submitTransfer()">Submit Transfer</button>
   </div>
 
   <div class="section">
-    <h2>Monthly Transfer Logs</h2>
-    <div id="monthLogsContainer"></div>
+    <h2>Logs</h2>
     <div class="month-nav">
-      <button onclick="changeMonth(-1)">Previous</button>
-      <span id="currentMonthLabel"></span>
-      <button onclick="changeMonth(1)">Next</button>
+      <button onclick="prevMonth()">←</button>
+      <span id="monthLabel"></span>
+      <button onclick="nextMonth()">→</button>
     </div>
-    <button onclick="downloadMonthlyLog()">Download Monthly Report (Excel)</button>
+    <div id="logsOutput">Loading logs...</div>
+    <button onclick="downloadReport()">Download Monthly Report</button>
   </div>
 
+  <!-- Firebase & App Logic -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
     import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
@@ -69,120 +72,129 @@
       projectId: "aidan-food-tracker",
       storageBucket: "aidan-food-tracker.firebasestorage.app",
       messagingSenderId: "397728832351",
-      appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
+      appId: "1:397728832351:web:33645f7f37ee1f277ff4ea",
+      databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    async function recordTransfer() {
+    const locations = ["Prohibition", "Tulia", "Beacon", "Ce Soir"];
+    let currentMonth = new Date();
+
+    function getMonthKey(dateObj) {
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      return `${year}-${month}`;
+    }
+
+    function submitTransfer() {
       const date = document.getElementById("transferDate").value;
-      const from = document.getElementById("locationFrom").value;
-      const to = document.getElementById("locationTo").value;
-      const product = document.getElementById("productName").value;
-      const amount = parseFloat(document.getElementById("amount").value);
+      const from = document.getElementById("fromLocation").value;
+      const to = document.getElementById("toLocation").value;
+      const product = document.getElementById("productName").value.trim();
+      const amount = parseFloat(document.getElementById("productAmount").value);
       const unit = document.getElementById("unit").value;
 
-      if (!date || !from || !to || !product || isNaN(amount)) {
-        alert("Fill in all fields");
+      if (!date || !product || isNaN(amount)) {
+        alert("Please fill all fields correctly.");
         return;
       }
 
       const monthKey = date.slice(0, 7); // YYYY-MM
       const timestamp = Date.now();
 
-      const logEntry = { date, product, amount, unit, from, to, timestamp };
+      const log = { date, product, amount, unit, from, to, timestamp };
 
-      // Save outgoing log
-      push(ref(db, `transfers/${monthKey}/${from}`), {
-        ...logEntry,
-        direction: "out"
-      });
+      push(ref(db, `logs/${from}/${monthKey}`), { ...log, type: "out" });
+      push(ref(db, `logs/${to}/${monthKey}`), { ...log, type: "in" });
 
-      // Save incoming log
-      push(ref(db, `transfers/${monthKey}/${to}`), {
-        ...logEntry,
-        direction: "in"
-      });
-
-      alert("Transfer recorded!");
-    }
-
-    // Swipeable month log viewer
-    let currentMonthOffset = 0;
-    const monthContainer = document.getElementById("monthLogsContainer");
-    const monthLabel = document.getElementById("currentMonthLabel");
-
-    function getMonthString(offset = 0) {
-      const today = new Date();
-      today.setMonth(today.getMonth() + offset);
-      return today.toISOString().slice(0, 7); // YYYY-MM
-    }
-
-    function changeMonth(offset) {
-      currentMonthOffset += offset;
+      alert("Transfer logged successfully!");
       loadLogs();
     }
 
     function loadLogs() {
-      const monthKey = getMonthString(currentMonthOffset);
-      monthLabel.textContent = monthKey;
+      const logsDiv = document.getElementById("logsOutput");
+      const monthKey = getMonthKey(currentMonth);
+      document.getElementById("monthLabel").textContent = monthKey;
 
-      const transfersRef = ref(db, `transfers/${monthKey}`);
-      onValue(transfersRef, (snapshot) => {
-        const data = snapshot.val();
-        monthContainer.innerHTML = "";
+      logsDiv.innerHTML = "";
 
-        if (!data) {
-          monthContainer.innerHTML = "<p>No logs for this month.</p>";
-          return;
-        }
+      locations.forEach(loc => {
+        const locRef = ref(db, `logs/${loc}/${monthKey}`);
+        onValue(locRef, snapshot => {
+          const data = snapshot.val();
+          let html = `<details><summary><strong>${loc}</strong></summary>`;
 
-        Object.entries(data).forEach(([location, logs]) => {
-          let details = `<details open><summary><strong>${location}</strong></summary>`;
-          Object.values(logs)
-            .sort((a, b) => a.timestamp - b.timestamp)
-            .forEach(entry => {
-              const style = entry.direction === 'in' ? 'incoming' : 'outgoing';
-              const sign = entry.direction === 'in' ? '+' : '-';
-              details += `<div class="log-entry ${style}">
-                ${entry.date} | ${sign}${entry.amount} ${entry.unit} ${entry.product} 
-                (${entry.direction === 'in' ? 'from ' + entry.from : 'to ' + entry.to})
+          if (data) {
+            const entries = Object.values(data).sort((a, b) => a.timestamp - b.timestamp);
+            entries.forEach(entry => {
+              const style = entry.type === "in" ? "positive" : "negative";
+              html += `<div class="log-entry ${style}">
+                ${entry.date} — ${entry.type === "in" ? "+" : "-"}${entry.amount} ${entry.unit} ${entry.product} (${entry.from} → ${entry.to})
               </div>`;
             });
-          details += "</details>";
-          monthContainer.innerHTML += details;
+          } else {
+            html += "<p>No logs for this month.</p>";
+          }
+
+          html += `</details>`;
+          logsDiv.innerHTML += html;
         });
       });
     }
 
-    async function downloadMonthlyLog() {
-      const monthKey = getMonthString(currentMonthOffset);
-      const snapshot = await get(ref(db, `transfers/${monthKey}`));
-      const data = snapshot.val();
+    function prevMonth() {
+      currentMonth.setMonth(currentMonth.getMonth() - 1);
+      loadLogs();
+    }
 
-      if (!data) {
-        alert("No data for this month.");
-        return;
+    function nextMonth() {
+      currentMonth.setMonth(currentMonth.getMonth() + 1);
+      loadLogs();
+    }
+
+    window.submitTransfer = submitTransfer;
+    window.prevMonth = prevMonth;
+    window.nextMonth = nextMonth;
+
+    // EXCEL DOWNLOAD
+    window.downloadReport = async function () {
+      const monthKey = getMonthKey(currentMonth);
+      const wb = XLSX.utils.book_new();
+
+      for (const loc of locations) {
+        const snapshot = await new Promise(resolve => {
+          onValue(ref(db, `logs/${loc}/${monthKey}`), resolve, { onlyOnce: true });
+        });
+
+        const data = snapshot.val();
+        if (!data) continue;
+
+        const rows = [["Date", "Type", "Product", "Amount", "Unit", "From", "To"]];
+        Object.values(data).forEach(log => {
+          rows.push([
+            log.date,
+            log.type,
+            log.product,
+            log.amount,
+            log.unit,
+            log.from,
+            log.to
+          ]);
+        });
+
+        const sheet = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, sheet, loc);
       }
 
-      let csv = "Location,Date,Direction,Product,Amount,Unit,From,To\n";
-      Object.entries(data).forEach(([location, logs]) => {
-        Object.values(logs).forEach(entry => {
-          csv += `${location},${entry.date},${entry.direction},${entry.product},${entry.amount},${entry.unit},${entry.from},${entry.to}\n`;
-        });
-      });
+      XLSX.writeFile(wb, `Food_Transfers_${monthKey}.xlsx`);
+    };
 
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `FoodTransfers_${monthKey}.csv`;
-      link.click();
-    }
-
-    window.changeMonth = changeMonth;
-    window.downloadMonthlyLog = downloadMonthlyLog;
-    window.recordTransfer = recordTransfer;
+    window.addEventListener("DOMContentLoaded", loadLogs);
+  </script>
+</body>
+</html>
 
     loadLogs(); // Initial load
   </script>
