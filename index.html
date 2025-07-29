@@ -43,25 +43,28 @@
     function $(id) { return document.getElementById(id); }
 
     function setupUI() {
-      emailjs.init("service_gnviol9");
+      emailjs.init("53xKou9OzR6BhrdWL"); // Public key
 
       locations.forEach(loc => {
-        ["from", "to"].forEach(id => {
+        ["from", "to", "store"].forEach(id => {
           const opt = document.createElement("option");
           opt.value = opt.textContent = loc;
-          $(id).appendChild(opt);
+          if ($(id)) $(id).appendChild(opt);
         });
       });
+
       units.forEach(unit => {
         const opt = document.createElement("option");
         opt.value = opt.textContent = unit;
-        $("unit").appendChild(opt);
+        if ($("unit")) $("unit").appendChild(opt);
       });
 
-      $("unit").addEventListener("change", updateUnitLabel);
-      ["cost", "amount"].forEach(id => $(id).addEventListener("input", updateTotalValue));
+      if ($("unit")) $("unit").addEventListener("change", updateUnitLabel);
+      ["cost", "amount"].forEach(id => {
+        if ($(id)) $(id).addEventListener("input", updateTotalValue);
+      });
 
-      $("from").addEventListener("change", () => {
+      if ($("from")) $("from").addEventListener("change", () => {
         const fromVal = $("from").value;
         [...$("to").options].forEach(opt => opt.disabled = opt.value === fromVal);
       });
@@ -128,10 +131,37 @@
       });
     };
 
+    window.addEventListener("DOMContentLoaded", setupUI);
   </script>
 </head>
 <body>
-  <!-- Your HTML body content here -->
+  <h2>Send Invoice</h2>
+  <div>
+    <label for="store">Store:</label>
+    <select id="store">
+      <option value="">Select a Store</option>
+    </select>
+
+    <label for="log-id">Log ID:</label>
+    <input type="text" id="log-id" placeholder="Enter log ID" />
+
+    <button onclick="handleSendInvoice()">Send Invoice</button>
+  </div>
+
+  <script>
+    function handleSendInvoice() {
+      const store = document.getElementById("store").value;
+      const id = document.getElementById("log-id").value;
+      const month = new Date().toISOString().slice(0, 7); // current month
+
+      if (!store || !id) {
+        alert("Please select a store and enter a log ID.");
+        return;
+      }
+
+      createInvoice(store, month, id);
+    }
+  </script>
 </body>
 </html>
 
