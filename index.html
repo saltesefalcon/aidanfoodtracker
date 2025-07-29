@@ -5,16 +5,40 @@
   <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- jsPDF Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <!-- EmailJS SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+</head>
+<body>
+  <h1>Food Transfer Tracker</h1>
+  <form id="transferForm">
+    <label>From:
+      <select id="from"></select>
+    </label>
+    <label>To:
+      <select id="to"></select>
+    </label>
+    <label>Product:
+      <input id="product" type="text" />
+    </label>
+    <label>Amount:
+      <input id="amount" type="number" step="0.01" />
+    </label>
+    <label>Unit:
+      <select id="unit"></select>
+    </label>
+    <label>Cost per Unit:
+      <input id="cost" type="number" step="0.01" />
+    </label>
+    <div id="unit-label"></div>
+    <div id="total-value"></div>
+    <button type="submit">Submit Transfer</button>
+  </form>
 
-  <!-- Firebase & SheetJS -->
+  <div id="log"></div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-    import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
-    import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
+    import { getDatabase, ref, push, onValue, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
@@ -30,21 +54,11 @@
     const db = getDatabase(app);
 
     const locations = ["Prohibition", "Tulia Osteria", "Ce Soir", "Beacon"];
-    const emailMap = {
-      "Prohibition": "accounts@prohibitionsocialhouse.com",
-      "Tulia Osteria": "accounts@tuliaosteria.com",
-      "Ce Soir": "accounts@cesoirbrasserie.com",
-      "Beacon": "accounts@beaconsocialhouse.com"
-    };
-
     const units = ["oz", "lb", "kg", "fl oz", "ml", "L"];
-    let selectedMonth = new Date().toISOString().slice(0, 7);
 
     function $(id) { return document.getElementById(id); }
 
     function setupUI() {
-      emailjs.init("53xKou9OzR6BhrdWL");
-
       locations.forEach(loc => {
         ["from", "to"].forEach(id => {
           const opt = document.createElement("option");
@@ -88,100 +102,72 @@
       return next;
     }
 
-    window.sendInvoice = async function({ log, invoiceNumber, pdfDataUri }) {
-      const isOut = true;
-      const fromEmail = emailMap[log.from];
-      const toEmail = emailMap[log.to];
+    function createInvoiceContent(data, invoiceNumber) {
+      const { from, to, product, amount, unit, cost, date } = data;
+      const isOutgoing = true;
+      const adjustedAmount = -Math.abs(amount);
+      const adjustedValue = -(amount * cost);
 
-      const base64PDF = pdfDataUri.split(",")[1];
-      const subject = `Aidan Food Transfer (${log.date} - ${invoiceNumber})`;
+      return `Invoice #: ${invoiceNumber}\nDate: ${date}\nFrom: ${from} to ${to}\n\nProduct: ${product}\nAmount: ${adjustedAmount} ${unit}\nCost per Unit: $${cost.toFixed(2)}\nTotal Value: $${adjustedValue.toFixed(2)}`;
+    }
 
-      const templateParamsOut = {
-        to_email: fromEmail,
-        subject: subject,
-        message: `Outgoing Transfer - Invoice #${invoiceNumber}`,
-        attachment: base64PDF,
+    async function sendInvoiceEmail(data, invoiceNumber) {
+      const emails = {
+        "Prohibition": "accounts@prohibitionsocialhouse.com",
+        "Beacon": "accounts@beaconsocialhouse.com",
+        "Tulia Osteria": "accounts@tuliaosteria.com",
+        "Ce Soir": "accounts@cesoirbrasserie.com"
       };
 
-      const templateParamsIn = {
-        to_email: toEmail,
-        subject: subject,
-        message: `Incoming Transfer - Invoice #${invoiceNumber}`,
-        attachment: base64PDF,
+      const emailParams = {
+        to_email: emails[data.to],
+        subject: `Aidan Food Transfer - ${data.date} - Invoice #${invoiceNumber}`,
+        message: createInvoiceContent(data, invoiceNumber)
       };
 
-      await emailjs.send("service_gnviol9", "template_6d3c34k", templateParamsOut);
-      await emailjs.send("service_gnviol9", "template_6d3c34k", templateParamsIn);
-      alert("Invoices sent to both locations.");
-    };
+      return emailjs.send("service_gnviol9", "template_6d3c34k", emailParams, "53xKou9OzR6BhrdWL");
+    }
 
-    window.createInvoice = async function(store, month, id) {
-      const logRef = ref(db, `logs/${store}/${month}/${id}`);
-      const snapshot = await get(logRef);
-      const log = snapshot.val();
-      if (!log) return alert("Log not found.");
+    function loadLogs() {
+      const logRef = ref(db, "logs");
+      onValue(logRef, snapshot => {
+        const logDiv = $("log");
+        logDiv.innerHTML = "";
+        snapshot.forEach(child => {
+          const log = child.val();
+          const div = document.createElement("div");
+          div.textContent = `${log.date}: ${log.product} (${log.amount} ${log.unit}) from ${log.from} to ${log.to}`;
+          const btn = document.createElement("button");
+          btn.textContent = "Create Invoice";
+          btn.onclick = async () => {
+            const invoiceNumber = await getNextInvoiceNumber();
+            sendInvoiceEmail(log, invoiceNumber)
+              .then(() => alert("Invoice sent!"))
+              .catch(err => alert("Failed to send: " + err.message));
+          };
+          div.appendChild(btn);
+          logDiv.appendChild(div);
+        });
+      });
+    }
 
-      const invoiceNumber = await getNextInvoiceNumber();
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const isOut = log.from === store;
-      const sign = isOut ? "-" : "+";
-      const signedAmount = isOut ? -log.amount : log.amount;
-      const total = log.costPerUnit ? (signedAmount * log.costPerUnit).toFixed(2) : "N/A";
+    $("transferForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const data = {
+        from: $("from").value,
+        to: $("to").value,
+        product: $("product").value,
+        amount: parseFloat($("amount").value),
+        unit: $("unit").value,
+        cost: parseFloat($("cost").value),
+        date: new Date().toISOString().split("T")[0]
+      };
+      await push(ref(db, "logs"), data);
+    });
 
-      doc.setFontSize(16);
-      doc.text(`Invoice #${invoiceNumber}`, 20, 20);
-      doc.setFontSize(12);
-      doc.text(`${log.from} to ${log.to}`, 20, 30);
-      doc.text(`Date: ${log.date}`, 20, 40);
-      doc.text(`Product: ${log.product}`, 20, 50);
-      doc.text(`Amount: ${sign}${log.amount} ${log.unit}`, 20, 60);
-      doc.text(`Cost per unit: $${log.costPerUnit ?? "N/A"}`, 20, 70);
-      doc.text(`Total Value: $${isOut ? "-" : ""}${Math.abs(total)}`, 20, 80);
-      doc.text(`Direction: ${isOut ? "Outgoing" : "Incoming"}`, 20, 90);
-
-      const pdfDataUri = doc.output("datauristring");
-      const win = window.open("", "_blank");
-      win.document.write(`
-        <html><head><title>Invoice Preview</title>
-        <style>
-          body { margin: 0; font-family: Arial; }
-          iframe { width: 100%; height: 90vh; border: none; }
-          .buttons {
-            padding: 10px; display: flex; justify-content: space-around;
-            background: #f0f0f0; border-top: 1px solid #ccc;
-          }
-          button {
-            padding: 10px 20px; font-size: 1rem;
-            border: none; border-radius: 5px; cursor: pointer;
-          }
-          .send { background: green; color: white; }
-          .cancel { background: red; color: white; }
-        </style>
-        </head><body>
-        <iframe src="${pdfDataUri}"></iframe>
-        <div class="buttons">
-          <button class="cancel" onclick="window.close()">Cancel</button>
-          <button class="send" onclick='window.opener.sendInvoice(${JSON.stringify({ log, invoiceNumber, pdfDataUri })}); window.close();'>Send Invoice</button>
-        </div>
-        </body></html>
-      `);
-    };
-
-    // rest of the original script here (addTransfer, editLog, saveEdit, loadLogs, etc.)
-
-    window.onload = () => {
-      setupUI();
-      $("date").valueAsDate = new Date();
-      updateUnitLabel();
-      loadLogs();
-    };
+    setupUI();
+    loadLogs();
   </script>
-
-  <!-- Styles remain unchanged -->
-</head>
-<body>
-  <!-- Body remains unchanged -->
 </body>
 </html>
 
