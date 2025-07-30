@@ -121,7 +121,10 @@
             const log = child.val();
             const div = document.createElement("div");
             div.className = "log-entry";
-            div.textContent = `${log.date} | ${log.product} | ${log.amount} ${log.unit} @ $${log.costPerUnit || ""}`;
+            const isOut = log.from === store;
+            const sign = isOut ? "-" : "+";
+            const color = isOut ? "red" : "green";
+            div.innerHTML = `<span style="color:${color};">${sign}${log.amount} ${log.unit} of ${log.product}${log.costPerUnit ? ` @ $${log.costPerUnit}` : ""}</span>`;
             section.appendChild(div);
           });
         });
@@ -225,4 +228,5 @@
   <div id="logs"></div>
 </body>
 </html>
+
 
