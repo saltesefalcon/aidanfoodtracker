@@ -1,13 +1,20 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
   <title>Food Transfer Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <!-- jsPDF Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- EmailJS -->
+  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@2.6.4/dist/email.min.js"></script>
+
+  <!-- Firebase & SheetJS -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-    import { getDatabase, ref, push, update, onValue } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+    import { getDatabase, ref, push, update, onValue, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
-    import { jsPDF } from "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    import emailjs from "https://cdn.jsdelivr.net/npm/emailjs-com@2.6.4/dist/email.min.js";
 
     emailjs.init("53xKou9OzR6BhrdWL");
 
@@ -33,23 +40,22 @@
     };
     const units = ["oz", "lb", "kg", "fl oz", "ml", "L"];
 
-    let currentDate = new Date();
-    let selectedMonth = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    let selectedMonth = new Date().toISOString().slice(0, 7);
 
     function $(id) { return document.getElementById(id); }
 
     function setupUI() {
-      const from = $("from");
-      const to = $("to");
-      const unit = $("unit");
-
       locations.forEach(loc => {
-        from.add(new Option(loc, loc));
-        to.add(new Option(loc, loc));
+        ["from", "to"].forEach(id => {
+          const opt = document.createElement("option");
+          opt.value = opt.textContent = loc;
+          $(id).appendChild(opt);
+        });
       });
-
-      units.forEach(u => {
-        unit.add(new Option(u, u));
+      units.forEach(unit => {
+        const opt = document.createElement("option");
+        opt.value = opt.textContent = unit;
+        $("unit").appendChild(opt);
       });
     }
 
@@ -57,12 +63,31 @@
       $("current-month").textContent = selectedMonth;
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
+    async function sendInvoice(from, to, date, product, amount, unit, costPerUnit, invoiceNumber, totalValue) {
+      const templateParams = {
+        from_location: from,
+        to_location: to,
+        transfer_date: date,
+        product: product,
+        amount: amount,
+        unit: unit,
+        cost_per_unit: costPerUnit,
+        invoice_number: invoiceNumber,
+        total_value: totalValue,
+        subject_line: `Aidan Food Transfer ${date} #${invoiceNumber}`,
+        email_to: `${locationEmails[from]},${locationEmails[to]}`
+      };
+
+      emailjs.send("service_gnviol9", "template_6d3c34k", templateParams)
+        .then(() => alert("Invoice emailed!"))
+        .catch(err => alert("Failed to send invoice: " + err));
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
       setupUI();
       $("date").valueAsDate = new Date();
-      loadLogs();
       updateMonthDisplay();
-    })
+    });
   </script>
   <style>
     body {
