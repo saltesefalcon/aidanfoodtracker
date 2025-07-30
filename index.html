@@ -5,10 +5,9 @@
   <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- Firebase, jsPDF, EmailJS -->
+  <!-- Firebase & EmailJS -->
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database-compat.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/emailjs-com@2.6.4/dist/email.min.js"></script>
 
   <script>
@@ -102,7 +101,7 @@
         total_value: totalValue,
         invoice_number: invoiceNumber,
         subject_line: subject,
-        email_to: `${locationEmails[from]},${locationEmails[to]}`
+        email_to: locationEmails[to]
       };
 
       emailjs.send("service_gnviol9", "template_6d3c34k", templateParams)
@@ -226,3 +225,4 @@
   <div id="logs"></div>
 </body>
 </html>
+
