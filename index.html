@@ -102,6 +102,97 @@
       return div;
     }
 
+    window.editLog = function(store, month, id, btn) {
+      const logRef = ref(db, `logs/${store}/${month}/${id}`);
+      onValue(logRef, snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        const parent = btn.parentElement;
+        parent.innerHTML = `
+          <input value="${data.date}" id="edit-date">
+          <input value="${data.product}" id="edit-product">
+          <input value="${data.amount}" id="edit-amount" type="number">
+          <select id="edit-unit">${units.map(u => `<option ${u === data.unit ? "selected" : ""}>${u}</option>`)}</select>
+          <input value="${data.costPerUnit || ""}" id="edit-cost" type="number">
+          <input value="${data.comment || ""}" id="edit-comment">
+          <button onclick="saveEdit('${store}', '${month}', '${id}', this)">Save</button>
+        `;
+      }, { onlyOnce: true });
+    }
+
+    window.saveEdit = function(store, month, id, btn) {
+      const updated = {
+        date: $("edit-date").value,
+        product: $("edit-product").value,
+        amount: parseFloat($("edit-amount").value),
+        unit: $("edit-unit").value,
+        costPerUnit: parseFloat($("edit-cost").value) || null,
+        comment: $("edit-comment").value || ""
+      };
+      update(ref(db, `logs/${store}/${month}/${id}`), updated).then(() => loadLogs());
+    }
+
+    window.loadLogs = function() {
+      $("logs").innerHTML = "";
+      locations.forEach(store => {
+        const section = document.createElement("div");
+        section.innerHTML = `<h2>${store} - ${selectedMonth}</h2>`;
+        const storeRef = ref(db, `logs/${store}/${selectedMonth}`);
+        onValue(storeRef, snapshot => {
+          section.innerHTML = `<h2>${store} - ${selectedMonth}</h2>`;
+          snapshot.forEach(child => {
+            const div = createLogEntryHTML(store, selectedMonth, child.key, child.val());
+            section.appendChild(div);
+          });
+        });
+        $("logs").appendChild(section);
+      });
+    }
+
+    window.changeMonth = function(offset) {
+      const [year, month] = selectedMonth.split("-").map(Number);
+      const newDate = new Date(year, month - 1 + offset);
+      selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+      loadLogs();
+    }
+
+    window.exportExcel = function() {
+      const dbRef = ref(db, "logs");
+      onValue(dbRef, snapshot => {
+        const wb = XLSX.utils.book_new();
+
+        snapshot.forEach(storeSnap => {
+          const storeName = storeSnap.key;
+          let allLogs = [];
+
+          storeSnap.forEach(monthSnap => {
+            const month = monthSnap.key;
+            monthSnap.forEach(logSnap => {
+              const log = logSnap.val();
+              const isOut = log.from === storeName;
+              const signedAmount = isOut ? -log.amount : log.amount;
+              const totalCost = log.costPerUnit ? signedAmount * log.costPerUnit : "";
+              allLogs.push([
+                log.date, log.from, log.to, log.product,
+                signedAmount, log.unit,
+                log.costPerUnit || "", totalCost || "", log.comment || ""
+              ]);
+            });
+          });
+
+          const ws = XLSX.utils.aoa_to_sheet([
+            ["Date", "From", "To", "Product", "Amount", "Unit", "Cost Per Unit", "Total Cost", "Comment"],
+            ...allLogs
+          ]);
+
+          XLSX.utils.book_append_sheet(wb, ws, storeName.slice(0, 31));
+        });
+
+        XLSX.writeFile(wb, `FoodTransfers_${selectedMonth}.xlsx`);
+      }, { onlyOnce: true });
+    }
+
     window.createInvoice = function(log, store) {
       const invoiceNumber = `${Date.now()}`;
       const isOut = log.from === store;
@@ -128,7 +219,7 @@
         <button onclick="window.close()">Cancel</button>
         <button onclick="window.opener.sendInvoiceEmail('${invoiceNumber}', ${JSON.stringify(log)}, '${totalValue}'); window.close();">Send Invoice</button>
       `);
-    };
+    }
 
     window.sendInvoiceEmail = function(invoiceNumber, log, totalValue) {
       const templateParams = {
@@ -148,15 +239,13 @@
       emailjs.send("service_gnviol9", "template_6d3c34k", templateParams)
         .then(() => alert("Invoice sent successfully."))
         .catch(err => alert("Error sending email: " + err));
-    };
+    }
 
     window.onload = () => {
       setupUI();
       $("date").valueAsDate = new Date();
       loadLogs();
     }
-
-    // loadLogs, editLog, exportExcel, and others should remain from previous working copy
   </script>
   <style>
     body { font-family: Arial; padding: 20px; max-width: 600px; margin: auto; }
