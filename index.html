@@ -39,21 +39,29 @@
     function $(id) { return document.getElementById(id); }
 
     function setupUI() {
+      const from = $("from");
+      const to = $("to");
+      const unit = $("unit");
+
       locations.forEach(loc => {
-        const optionFrom = document.createElement("option");
-        optionFrom.value = optionFrom.textContent = loc;
-        $("from").appendChild(optionFrom);
-
-        const optionTo = document.createElement("option");
-        optionTo.value = optionTo.textContent = loc;
-        $("to").appendChild(optionTo);
+        from.add(new Option(loc, loc));
+        to.add(new Option(loc, loc));
       });
 
-      units.forEach(unit => {
-        const opt = document.createElement("option");
-        opt.value = opt.textContent = unit;
-        $("unit").appendChild(opt);
+      units.forEach(u => {
+        unit.add(new Option(u, u));
       });
+    }
+
+    function updateMonthDisplay() {
+      $("current-month").textContent = selectedMonth;
+    }
+
+    window.onload = () => {
+      setupUI();
+      $("date").valueAsDate = new Date();
+      loadLogs();
+      updateMonthDisplay();
     }
 
     function addTransfer() {
@@ -77,8 +85,10 @@
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
 
-      const logId = push(fromRef, log).key;
+      push(fromRef, log);
       push(toRef, log);
+
+      loadLogs();
     }
 
     function createLogEntryHTML(store, month, id, log) {
@@ -96,44 +106,12 @@
           ${log.costPerUnit ? ` @ $${log.costPerUnit}` : ""}${total}
           (${log.date}${log.comment ? ` | ${log.comment}` : ""})
         </span><br>
-        <button onclick='editLog("${store}", "${month}", "${id}", this)'>Edit</button>
         <button onclick='createInvoice(${JSON.stringify(log)}, "${store}")'>Create Invoice</button>
       `;
       return div;
     }
 
-    window.editLog = function(store, month, id, btn) {
-      const logRef = ref(db, `logs/${store}/${month}/${id}`);
-      onValue(logRef, snapshot => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        const parent = btn.parentElement;
-        parent.innerHTML = `
-          <input value="${data.date}" id="edit-date">
-          <input value="${data.product}" id="edit-product">
-          <input value="${data.amount}" id="edit-amount" type="number">
-          <select id="edit-unit">${units.map(u => `<option ${u === data.unit ? "selected" : ""}>${u}</option>`)}</select>
-          <input value="${data.costPerUnit || ""}" id="edit-cost" type="number">
-          <input value="${data.comment || ""}" id="edit-comment">
-          <button onclick="saveEdit('${store}', '${month}', '${id}', this)">Save</button>
-        `;
-      }, { onlyOnce: true });
-    }
-
-    window.saveEdit = function(store, month, id, btn) {
-      const updated = {
-        date: $("edit-date").value,
-        product: $("edit-product").value,
-        amount: parseFloat($("edit-amount").value),
-        unit: $("edit-unit").value,
-        costPerUnit: parseFloat($("edit-cost").value) || null,
-        comment: $("edit-comment").value || ""
-      };
-      update(ref(db, `logs/${store}/${month}/${id}`), updated).then(() => loadLogs());
-    }
-
-    window.loadLogs = function() {
+    function loadLogs() {
       $("logs").innerHTML = "";
       locations.forEach(store => {
         const section = document.createElement("div");
@@ -150,14 +128,15 @@
       });
     }
 
-    window.changeMonth = function(offset) {
+    function changeMonth(offset) {
       const [year, month] = selectedMonth.split("-").map(Number);
       const newDate = new Date(year, month - 1 + offset);
       selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+      updateMonthDisplay();
       loadLogs();
     }
 
-    window.exportExcel = function() {
+    function exportExcel() {
       const dbRef = ref(db, "logs");
       onValue(dbRef, snapshot => {
         const wb = XLSX.utils.book_new();
@@ -240,35 +219,88 @@
         .then(() => alert("Invoice sent successfully."))
         .catch(err => alert("Error sending email: " + err));
     }
-
-    window.onload = () => {
-      setupUI();
-      $("date").valueAsDate = new Date();
-      loadLogs();
-    }
   </script>
   <style>
-    body { font-family: Arial; padding: 20px; max-width: 600px; margin: auto; }
-    input, select, button { width: 100%; margin: 5px 0; padding: 8px; font-size: 1em; }
-    .log-entry { margin: 10px 0; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
-    h2 { margin-top: 30px; }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      margin: auto;
+      max-width: 600px;
+      background-color: #f8f8f8;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    input, select, button {
+      width: 100%;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      padding: 10px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    h2 {
+      margin-top: 30px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 5px;
+    }
+    .log-entry {
+      padding: 10px;
+      margin-top: 10px;
+      background-color: white;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
   </style>
 </head>
 <body>
   <h1>Food Transfer Tracker</h1>
 
-  <label>Date: <input type="date" id="date"></label>
-  <label>From: <select id="from"></select></label>
-  <label>To: <select id="to"></select></label>
-  <label>Product: <input id="product"></label>
-  <label>Amount: <input type="number" id="amount"></label>
-  <label>Unit: <select id="unit"></select></label>
-  <label>Cost per unit: <input type="number" id="cost" placeholder="$"></label>
-  <label>Comment: <input id="comment" placeholder="Optional"></label>
+  <label>Date:</label>
+  <input type="date" id="date">
+
+  <label>From:</label>
+  <select id="from"></select>
+
+  <label>To:</label>
+  <select id="to"></select>
+
+  <label>Product:</label>
+  <input id="product">
+
+  <label>Amount:</label>
+  <input type="number" id="amount">
+
+  <label>Unit:</label>
+  <select id="unit"></select>
+
+  <label>Cost per unit:</label>
+  <input type="number" id="cost" placeholder="$">
+
+  <label>Comment:</label>
+  <input id="comment" placeholder="Optional">
+
   <button onclick="addTransfer()">Submit Transfer</button>
 
   <h2>Logs for <button onclick="changeMonth(-1)">&lt;</button> <span id="current-month"></span> <button onclick="changeMonth(1)">&gt;</button></h2>
   <div id="logs"></div>
+
   <button onclick="exportExcel()">Download Monthly Report</button>
 </body>
 </html>
