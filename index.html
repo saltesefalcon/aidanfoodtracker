@@ -5,6 +5,9 @@
   <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
   <!-- Firebase & EmailJS -->
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database-compat.js"></script>
@@ -23,7 +26,6 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
     const locations = ["Prohibition", "Tulia Osteria", "Ce Soir", "Beacon"];
     const locationEmails = {
       "Prohibition": "accounts@prohibitionsocialhouse.com",
@@ -31,7 +33,6 @@
       "Tulia Osteria": "accounts@tuliaosteria.com",
       "Ce Soir": "accounts@cesoirbrasserie.com"
     };
-
     const units = ["oz", "lb", "kg", "fl oz", "ml", "L"];
     let selectedMonth = new Date().toISOString().slice(0, 7);
 
@@ -79,33 +80,77 @@
       fromRef.set(log);
       toRef.set(log);
 
-      sendInvoice(from, to, date, product, amount, unit, costPerUnit);
       loadLogs();
     }
 
-    function sendInvoice(from, to, date, product, amount, unit, costPerUnit) {
+    function createInvoice(log) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
       const invoiceNumber = Date.now();
-      const totalValue = costPerUnit ? (amount * costPerUnit).toFixed(2) : "N/A";
-      const subject = `Aidan Food Transfer ${date} ${invoiceNumber}`;
+      const isOut = true;
+      const sign = isOut ? "-" : "+";
+      const totalValue = log.costPerUnit ? (log.amount * log.costPerUnit).toFixed(2) : "N/A";
 
+      doc.setFontSize(16);
+      doc.text(`Invoice #${invoiceNumber}`, 20, 20);
+      doc.setFontSize(12);
+      doc.text(`From: ${log.from}`, 20, 30);
+      doc.text(`To: ${log.to}`, 20, 40);
+      doc.text(`Date: ${log.date}`, 20, 50);
+      doc.text(`Product: ${log.product}`, 20, 60);
+      doc.text(`Amount: ${sign}${log.amount} ${log.unit}`, 20, 70);
+      doc.text(`Cost per unit: $${log.costPerUnit ?? "N/A"}`, 20, 80);
+      doc.text(`Total Value: $${totalValue}`, 20, 90);
+
+      const pdfDataUri = doc.output("datauristring");
+      const win = window.open("", "_blank");
+      win.document.write(`
+        <html><head><title>Invoice Preview</title>
+        <style>
+          body { margin: 0; font-family: Arial; }
+          iframe { width: 100%; height: 90vh; border: none; }
+          .buttons {
+            padding: 10px; display: flex; justify-content: space-around;
+            background: #f0f0f0; border-top: 1px solid #ccc;
+          }
+          button {
+            padding: 10px 20px; font-size: 1rem;
+            border: none; border-radius: 5px; cursor: pointer;
+          }
+          .send { background: green; color: white; }
+          .cancel { background: red; color: white; }
+        </style>
+        </head><body>
+        <iframe src="${pdfDataUri}"></iframe>
+        <div class="buttons">
+          <button class="cancel" onclick="window.close()">Cancel</button>
+          <button class="send" onclick="window.opener.sendInvoice(${JSON.stringify(log)}, ${invoiceNumber}); window.close();">Send Invoice</button>
+        </div>
+        </body></html>
+      `);
+    }
+
+    function sendInvoice(log, invoiceNumber) {
+      const subject = `Aidan Food Transfer ${log.date} ${invoiceNumber}`;
       emailjs.init("53xKou9OzR6BhrdWL");
 
+      const totalValue = log.costPerUnit ? (log.amount * log.costPerUnit).toFixed(2) : "N/A";
       const templateParams = {
-        from_location: from,
-        to_location: to,
-        transfer_date: date,
-        product: product,
-        amount: amount,
-        unit: unit,
-        cost_per_unit: costPerUnit || "",
+        from_location: log.from,
+        to_location: log.to,
+        transfer_date: log.date,
+        product: log.product,
+        amount: log.amount,
+        unit: log.unit,
+        cost_per_unit: log.costPerUnit || "",
         total_value: totalValue,
         invoice_number: invoiceNumber,
         subject_line: subject,
-        email_to: locationEmails[to]
+        email_to: locationEmails[log.to]
       };
 
       emailjs.send("service_gnviol9", "template_6d3c34k", templateParams)
-        .then(() => console.log("Invoice sent successfully"))
+        .then(() => alert("Invoice sent successfully!"))
         .catch(err => console.error("Error sending invoice:", err));
     }
 
@@ -115,8 +160,7 @@
         const section = document.createElement("div");
         section.innerHTML = `<h3>${store}</h3>`;
         const storeRef = db.ref(`logs/${store}/${selectedMonth}`);
-        storeRef.on("value", snapshot => {
-          section.innerHTML = `<h3>${store}</h3>`;
+        storeRef.once("value", snapshot => {
           snapshot.forEach(child => {
             const log = child.val();
             const div = document.createElement("div");
@@ -124,7 +168,8 @@
             const isOut = log.from === store;
             const sign = isOut ? "-" : "+";
             const color = isOut ? "red" : "green";
-            div.innerHTML = `<span style="color:${color};">${sign}${log.amount} ${log.unit} of ${log.product}${log.costPerUnit ? ` @ $${log.costPerUnit}` : ""}</span>`;
+            div.innerHTML = `<span style="color:${color};">${sign}${log.amount} ${log.unit} of ${log.product}${log.costPerUnit ? ` @ $${log.costPerUnit}` : ""}</span><br>
+              <button onclick='createInvoice(${JSON.stringify(log)})'>Create Invoice</button>`;
             section.appendChild(div);
           });
         });
@@ -148,56 +193,24 @@
     }
   </script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-      margin: auto;
-      max-width: 600px;
-      background-color: #f8f8f8;
-    }
-    label {
-      display: block;
-      margin-top: 10px;
-      font-weight: bold;
-    }
+    body { font-family: Arial; padding: 20px; max-width: 600px; margin: auto; background: #f8f8f8; }
+    label { font-weight: bold; display: block; margin-top: 10px; }
     input, select, button {
-      width: 100%;
-      margin-top: 5px;
-      margin-bottom: 15px;
-      padding: 10px;
-      font-size: 1rem;
-      border: 1px solid #ccc;
-      border-radius: 5px;
+      width: 100%; padding: 10px; margin: 5px 0 15px; font-size: 1rem;
+      border: 1px solid #ccc; border-radius: 5px;
     }
-    button {
-      background-color: #007bff;
-      color: white;
-      cursor: pointer;
-      transition: background-color 0.3s;
-    }
-    button:hover {
-      background-color: #0056b3;
-    }
-    h1 {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    h2 {
-      margin-top: 30px;
-      border-bottom: 1px solid #ccc;
-      padding-bottom: 5px;
-    }
+    button { background: #007bff; color: white; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    h1, h2 { text-align: center; }
     .log-entry {
-      padding: 10px;
-      margin-top: 10px;
-      background-color: white;
-      border: 1px solid #ddd;
-      border-radius: 5px;
+      background: white; border: 1px solid #ddd; border-radius: 6px;
+      padding: 10px; margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
   <h1>Food Transfer Tracker</h1>
+
   <label>Date:</label>
   <input type="date" id="date">
 
