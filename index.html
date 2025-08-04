@@ -37,7 +37,7 @@
     function $(id) { return document.getElementById(id); }
 
     function setupUI() {
-      // Populate dropdowns for "from" and "to"
+      // Populate dropdowns for "from" and "to" with location options
       locations.forEach(loc => {
         ["from", "to"].forEach(id => {
           const opt = document.createElement("option");
@@ -45,12 +45,15 @@
           $(id).appendChild(opt);
         });
       });
+
+      // Populate dropdown for units
       units.forEach(unit => {
         const opt = document.createElement("option");
         opt.value = opt.textContent = unit;
         $("unit").appendChild(opt);
       });
 
+      // Set event listeners
       $("unit").addEventListener("change", updateUnitLabel);
       $("cost").addEventListener("input", updateTotalValue);
       $("amount").addEventListener("input", updateTotalValue);
@@ -432,7 +435,6 @@
   <button onclick="exportExcel()">Download Monthly Report</button>
 </body>
 </html>
-
 
 
 
