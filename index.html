@@ -37,6 +37,7 @@
     function $(id) { return document.getElementById(id); }
 
     function setupUI() {
+      // Populate dropdowns for "from" and "to"
       locations.forEach(loc => {
         ["from", "to"].forEach(id => {
           const opt = document.createElement("option");
@@ -53,6 +54,8 @@
       $("unit").addEventListener("change", updateUnitLabel);
       $("cost").addEventListener("input", updateTotalValue);
       $("amount").addEventListener("input", updateTotalValue);
+
+      loadLogs(); // Load logs after UI setup
     }
 
     function updateUnitLabel() {
