@@ -56,6 +56,8 @@
       $("unit").addEventListener("change", updateUnitLabel);
       $("cost").addEventListener("input", updateTotalValue);
       $("amount").addEventListener("input", updateTotalValue);
+
+      loadLogs(); // Load logs after UI setup
     }
 
     function updateUnitLabel() {
