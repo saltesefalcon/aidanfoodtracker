@@ -180,17 +180,39 @@
         <iframe src="${pdfDataUri}"></iframe>
         <div class="buttons">
           <button class="cancel" onclick="window.close()">Cancel</button>
-          <button class="send" onclick="window.opener.sendInvoice(${JSON.stringify({ log, invoiceNumber, pdfDataUri })}); window.close();">Send Invoice</button>
+          <button class="send" onclick="sendInvoice(${JSON.stringify({ log, invoiceNumber, pdfDataUri })}); window.close();">Send Invoice</button>
         </div>
         </body></html>
       `);
     };
 
     window.sendInvoice = function({ log, invoiceNumber, pdfDataUri }) {
-      console.log("Sending invoice #", invoiceNumber);
-      console.log("PDF URI:", pdfDataUri);
-      console.log("Details:", log);
-      alert(`Send logic triggered for invoice #${invoiceNumber}`);
+      const emailAddresses = {
+        "Prohibition": "accounts@prohibitionsocialhouse.com",
+        "Beacon": "accounts@beaconsocialhouse.com",
+        "Tulia Osteria": "accounts@tuliaosteria.com",
+        "Ce Soir": "accounts@cesoirbrasserie.com"
+      };
+
+      const to = log.from === "Prohibition" ? emailAddresses["Prohibition"] : emailAddresses[log.to];
+      const subject = `Aidan Food Transfer ${log.date} #${invoiceNumber}`;
+      const message = `Invoice #${invoiceNumber}\n\nProduct: ${log.product}\nAmount: ${log.amount} ${log.unit}\nCost per unit: ${log.costPerUnit ?? "N/A"}\nTotal Value: $${(log.amount * log.costPerUnit).toFixed(2)}\nDirection: ${log.from === "Prohibition" ? "Outgoing" : "Incoming"}`;
+
+      emailjs.send(
+        'service_gnviol9',
+        'template_6d3c34k',
+        {
+          subject,
+          recipient_email: to,
+          message
+        }
+      ).then((response) => {
+        console.log('Email sent successfully', response);
+        alert('Invoice sent!');
+      }, (error) => {
+        console.log('Error sending email', error);
+        alert('Failed to send invoice!');
+      });
     };
 
     window.editLog = function(store, month, id, btn) {
