@@ -68,15 +68,6 @@
       }
     }
 
-    async function getNextInvoiceNumber() {
-      const counterRef = ref(db, "invoiceCounter");
-      const snapshot = await get(counterRef);
-      let current = snapshot.exists() ? snapshot.val() : 1000;
-      const next = current + 1;
-      await update(ref(db), { invoiceCounter: next });
-      return next;
-    }
-
     function addTransfer() {
       const date = $("date").value;
       const from = $("from").value;
@@ -138,59 +129,29 @@
       const log = snapshot.val();
       if (!log) return alert("Log not found.");
 
-      const invoiceNumber = await getNextInvoiceNumber();
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
 
+      const invoiceTitle = `Invoice: ${log.from} to ${log.to}`;
+      const fileName = `aidanfoodtransfer_${log.date}_${id}.pdf`;
       const isOut = log.from === store;
       const sign = isOut ? "-" : "+";
       const total = log.costPerUnit ? (log.amount * log.costPerUnit).toFixed(2) : "N/A";
 
       doc.setFontSize(16);
-      doc.text(`Invoice #${invoiceNumber}`, 20, 20);
+      doc.text(invoiceTitle, 20, 20);
+
       doc.setFontSize(12);
-      doc.text(`From: ${log.from}`, 20, 30);
-      doc.text(`To: ${log.to}`, 20, 40);
-      doc.text(`Date: ${log.date}`, 20, 50);
-      doc.text(`Product: ${log.product}`, 20, 60);
-      doc.text(`Amount: ${sign}${log.amount} ${log.unit}`, 20, 70);
-      doc.text(`Cost per unit: $${log.costPerUnit ?? "N/A"}`, 20, 80);
-      doc.text(`Total Value: $${total}`, 20, 90);
-      doc.text(`Direction: ${isOut ? "Outgoing" : "Incoming"}`, 20, 100);
+      doc.text(`Date: ${log.date}`, 20, 30);
+      doc.text(`Product: ${log.product}`, 20, 40);
+      doc.text(`Amount: ${sign}${log.amount} ${log.unit}`, 20, 50);
+      doc.text(`Cost per unit: $${log.costPerUnit ?? "N/A"}`, 20, 60);
+      doc.text(`Total Value: $${total}`, 20, 70);
+      doc.text(`Direction: ${isOut ? "Outgoing" : "Incoming"}`, 20, 80);
 
-      const pdfDataUri = doc.output("datauristring");
-      const win = window.open("", "_blank");
-      win.document.write(`
-        <html><head><title>Invoice Preview</title>
-        <style>
-          body { margin: 0; font-family: Arial; }
-          iframe { width: 100%; height: 90vh; border: none; }
-          .buttons {
-            padding: 10px; display: flex; justify-content: space-around;
-            background: #f0f0f0; border-top: 1px solid #ccc;
-          }
-          button {
-            padding: 10px 20px; font-size: 1rem;
-            border: none; border-radius: 5px; cursor: pointer;
-          }
-          .send { background: green; color: white; }
-          .cancel { background: red; color: white; }
-        </style>
-        </head><body>
-        <iframe src="${pdfDataUri}"></iframe>
-        <div class="buttons">
-          <button class="cancel" onclick="window.close()">Cancel</button>
-          <button class="send" onclick="window.opener.sendInvoice(${JSON.stringify({ log, invoiceNumber, pdfDataUri })}); window.close();">Send Invoice</button>
-        </div>
-        </body></html>
-      `);
-    };
-
-    window.sendInvoice = function({ log, invoiceNumber, pdfDataUri }) {
-      console.log("Sending invoice #", invoiceNumber);
-      console.log("PDF URI:", pdfDataUri);
-      console.log("Details:", log);
-      alert(`Send logic triggered for invoice #${invoiceNumber}`);
+      const pdfBlob = doc.output("blob");
+      const blobURL = URL.createObjectURL(pdfBlob);
+      window.open(blobURL, "_blank");
     };
 
     window.editLog = function(store, month, id, btn) {
