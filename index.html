@@ -14,9 +14,6 @@
     import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
-    // Initialize EmailJS
-    emailjs.init("53xKou9OzR6BhrdWL");  // Your public key
-
     const firebaseConfig = {
       apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
       authDomain: "aidan-food-tracker.firebaseapp.com",
@@ -37,7 +34,6 @@
     function $(id) { return document.getElementById(id); }
 
     function setupUI() {
-      // Populate dropdowns for "from" and "to"
       locations.forEach(loc => {
         ["from", "to"].forEach(id => {
           const opt = document.createElement("option");
@@ -45,8 +41,6 @@
           $(id).appendChild(opt);
         });
       });
-
-      // Populate unit dropdown
       units.forEach(unit => {
         const opt = document.createElement("option");
         opt.value = opt.textContent = unit;
@@ -56,8 +50,6 @@
       $("unit").addEventListener("change", updateUnitLabel);
       $("cost").addEventListener("input", updateTotalValue);
       $("amount").addEventListener("input", updateTotalValue);
-
-      loadLogs(); // Load logs after UI setup
     }
 
     function updateUnitLabel() {
