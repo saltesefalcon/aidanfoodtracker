@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script type="module">
@@ -42,6 +42,7 @@
         $("unit").appendChild(opt);
       });
 
+      // Setup listeners for dynamic label and total calculation
       $("unit").addEventListener("change", updateUnitLabel);
       $("cost").addEventListener("input", updateTotalValue);
       $("amount").addEventListener("input", updateTotalValue);
@@ -87,6 +88,7 @@
       push(fromRef, log);
       push(toRef, log);
 
+      // Reset form
       ["product", "amount", "cost", "comment"].forEach(id => $(id).value = "");
       $("unit").selectedIndex = 0;
       updateUnitLabel();
@@ -112,15 +114,10 @@
           (${log.date}${log.comment ? ` | ${log.comment}` : ""})
         </span><br>
         <button onclick="editLog('${store}', '${month}', '${id}', this)">Edit</button>
-        <button onclick="createInvoice('${store}', '${month}', '${id}')">Create Invoice</button>
       `;
 
       return div;
     }
-
-    window.createInvoice = function(store, month, id) {
-      alert(`Invoice triggered for log ID: ${id} (${store}, ${month})`);
-    };
 
     window.editLog = function(store, month, id, btn) {
       const logRef = ref(db, `logs/${store}/${month}/${id}`);
