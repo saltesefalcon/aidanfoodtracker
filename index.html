@@ -62,7 +62,7 @@
       const cost = parseFloat($("cost").value);
       if (!isNaN(amount) && !isNaN(cost)) {
         const total = (amount * cost).toFixed(2);
-        $("total-value").textContent = Total Value: $${total};
+        $("total-value").textContent = `Total Value: $${total}`;
       } else {
         $("total-value").textContent = "";
       }
@@ -95,8 +95,8 @@
       const monthKey = date.slice(0, 7);
       const log = { date, from, to, product, amount, unit, costPerUnit, comment };
 
-      const fromRef = ref(db, logs/${from}/${monthKey});
-      const toRef = ref(db, logs/${to}/${monthKey});
+      const fromRef = ref(db, `logs/${from}/${monthKey}`);
+      const toRef = ref(db, `logs/${to}/${monthKey}`);
 
       push(fromRef, log);
       push(toRef, log);
@@ -113,27 +113,27 @@
       const div = document.createElement("div");
       div.className = "log-entry";
 
-      const cost = log.costPerUnit ?  @ $${log.costPerUnit.toFixed(2)} each : "";
-      const totalCost = log.costPerUnit ?  = $${(log.amount * log.costPerUnit).toFixed(2)} : "";
+      const cost = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
+      const totalCost = log.costPerUnit ? ` = $${(log.amount * log.costPerUnit).toFixed(2)}` : "";
 
       const isOut = log.from === store;
       const sign = isOut ? "-" : "+";
       const color = isOut ? "red" : "green";
 
-      div.innerHTML = 
+      div.innerHTML = `
         <span style="color:${color}; font-size:0.95rem;">
           ${sign}${log.amount} ${log.unit} of ${log.product}${cost}${totalCost}
-          (${log.date}${log.comment ?  | ${log.comment} : ""})
+          (${log.date}${log.comment ? ` | ${log.comment}` : ""})
         </span><br>
         <button onclick="editLog('${store}', '${month}', '${id}', this)">Edit</button>
         <button onclick="createInvoice('${store}', '${month}', '${id}')">Create Invoice</button>
-      ;
+      `;
 
       return div;
     }
 
     window.createInvoice = async function(store, month, id) {
-      const logRef = ref(db, logs/${store}/${month}/${id});
+      const logRef = ref(db, `logs/${store}/${month}/${id}`);
       const snapshot = await get(logRef);
       const log = snapshot.val();
       if (!log) return alert("Log not found.");
@@ -147,20 +147,20 @@
       const total = log.costPerUnit ? (log.amount * log.costPerUnit).toFixed(2) : "N/A";
 
       doc.setFontSize(16);
-      doc.text(Invoice #${invoiceNumber}, 20, 20);
+      doc.text(`Invoice #${invoiceNumber}`, 20, 20);
       doc.setFontSize(12);
-      doc.text(From: ${log.from}, 20, 30);
-      doc.text(To: ${log.to}, 20, 40);
-      doc.text(Date: ${log.date}, 20, 50);
-      doc.text(Product: ${log.product}, 20, 60);
-      doc.text(Amount: ${sign}${log.amount} ${log.unit}, 20, 70);
-      doc.text(Cost per unit: $${log.costPerUnit ?? "N/A"}, 20, 80);
-      doc.text(Total Value: $${total}, 20, 90);
-      doc.text(Direction: ${isOut ? "Outgoing" : "Incoming"}, 20, 100);
+      doc.text(`From: ${log.from}`, 20, 30);
+      doc.text(`To: ${log.to}`, 20, 40);
+      doc.text(`Date: ${log.date}`, 20, 50);
+      doc.text(`Product: ${log.product}`, 20, 60);
+      doc.text(`Amount: ${sign}${log.amount} ${log.unit}`, 20, 70);
+      doc.text(`Cost per unit: $${log.costPerUnit ?? "N/A"}`, 20, 80);
+      doc.text(`Total Value: $${total}`, 20, 90);
+      doc.text(`Direction: ${isOut ? "Outgoing" : "Incoming"}`, 20, 100);
 
       const pdfDataUri = doc.output("datauristring");
       const win = window.open("", "_blank");
-      win.document.write(
+      win.document.write(`
         <html><head><title>Invoice Preview</title>
         <style>
           body { margin: 0; font-family: Arial; }
@@ -183,32 +183,32 @@
           <button class="send" onclick="window.opener.sendInvoice(${JSON.stringify({ log, invoiceNumber, pdfDataUri })}); window.close();">Send Invoice</button>
         </div>
         </body></html>
-      );
+      `);
     };
 
     window.sendInvoice = function({ log, invoiceNumber, pdfDataUri }) {
       console.log("Sending invoice #", invoiceNumber);
       console.log("PDF URI:", pdfDataUri);
       console.log("Details:", log);
-      alert(Send logic triggered for invoice #${invoiceNumber});
+      alert(`Send logic triggered for invoice #${invoiceNumber}`);
     };
 
     window.editLog = function(store, month, id, btn) {
-      const logRef = ref(db, logs/${store}/${month}/${id});
+      const logRef = ref(db, `logs/${store}/${month}/${id}`);
       get(logRef).then(snapshot => {
         const data = snapshot.val();
         if (!data) return;
 
         const parent = btn.parentElement;
-        parent.innerHTML = 
+        parent.innerHTML = `
           <input value="${data.date}" id="edit-date" type="date">
           <input value="${data.product}" id="edit-product" placeholder="Product">
           <input value="${data.amount}" id="edit-amount" type="number">
-          <select id="edit-unit">${units.map(u => <option ${u === data.unit ? "selected" : ""}>${u}</option>)}</select>
+          <select id="edit-unit">${units.map(u => `<option ${u === data.unit ? "selected" : ""}>${u}</option>`)}</select>
           <input value="${data.costPerUnit || ""}" id="edit-cost" type="number" placeholder="Cost/unit">
           <input value="${data.comment || ""}" id="edit-comment" placeholder="Comment">
           <button onclick="saveEdit('${store}', '${month}', '${id}', this)">Save</button>
-        ;
+        `;
       });
     }
 
@@ -221,7 +221,7 @@
         costPerUnit: parseFloat($("edit-cost").value) || null,
         comment: $("edit-comment").value || ""
       };
-      update(ref(db, logs/${store}/${month}/${id}), updated).then(() => {
+      update(ref(db, `logs/${store}/${month}/${id}`), updated).then(() => {
         alert("Edit saved!");
         loadLogs();
       });
@@ -233,8 +233,8 @@
 
       locations.forEach(store => {
         const section = document.createElement("div");
-        section.innerHTML = <h3>${store}</h3>;
-        const storeRef = ref(db, logs/${store}/${selectedMonth});
+        section.innerHTML = `<h3>${store}</h3>`;
+        const storeRef = ref(db, `logs/${store}/${selectedMonth}`);
         get(storeRef).then(snapshot => {
           snapshot.forEach(child => {
             const div = createLogEntryHTML(store, selectedMonth, child.key, child.val());
@@ -276,14 +276,14 @@
           XLSX.utils.book_append_sheet(wb, ws, storeName.slice(0, 31));
         });
 
-        XLSX.writeFile(wb, FoodTransfers_${selectedMonth}.xlsx);
+        XLSX.writeFile(wb, `FoodTransfers_${selectedMonth}.xlsx`);
       });
     }
 
     window.changeMonth = function(offset) {
       const [year, month] = selectedMonth.split("-").map(Number);
       const newDate = new Date(year, month - 1 + offset);
-      selectedMonth = ${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')};
+      selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
       loadLogs();
     }
 
