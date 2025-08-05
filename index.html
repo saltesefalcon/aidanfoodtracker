@@ -14,6 +14,9 @@
     import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
+    // Initialize EmailJS
+    emailjs.init("53xKou9OzR6BhrdWL");  // Your public key
+
     const firebaseConfig = {
       apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
       authDomain: "aidan-food-tracker.firebaseapp.com",
@@ -41,6 +44,7 @@
           $(id).appendChild(opt);
         });
       });
+
       units.forEach(unit => {
         const opt = document.createElement("option");
         opt.value = opt.textContent = unit;
@@ -426,4 +430,3 @@
   <button onclick="exportExcel()">Download Monthly Report</button>
 </body>
 </html>
-
