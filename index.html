@@ -185,13 +185,13 @@
         <iframe src="${pdfDataUri}"></iframe>
         <div class="buttons">
           <button class="cancel" onclick="window.close()">Cancel</button>
-          <button class="send" onclick="sendInvoice(${JSON.stringify({ log, invoiceNumber, pdfDataUri })}); window.close();">Send Invoice</button>
+          <button class="send" onclick="sendInvoice(${JSON.stringify({ log, invoiceNumber, pdfDataUri })}, this)">Send Invoice</button>
         </div>
         </body></html>
       `);
     };
 
-    window.sendInvoice = function({ log, invoiceNumber, pdfDataUri }) {
+    window.sendInvoice = function({ log, invoiceNumber, pdfDataUri }, button) {
       const emailAddresses = {
         "Prohibition": "accounts@prohibitionsocialhouse.com",
         "Beacon": "accounts@beaconsocialhouse.com",
@@ -219,6 +219,7 @@
       ).then((response) => {
         console.log('Email sent successfully', response);
         alert('Invoice sent!');
+        button.disabled = true;  // Disable the button after sending
       }, (error) => {
         console.log('Error sending email', error);
         alert('Failed to send invoice!');
