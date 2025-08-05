@@ -98,18 +98,31 @@
       const monthKey = date.slice(0, 7);
       const log = { date, from, to, product, amount, unit, costPerUnit, comment };
 
+      // Debugging Firebase Push
+      console.log("Logging transfer:", log);
+
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
 
-      push(fromRef, log);
-      push(toRef, log);
+      push(fromRef, log).then(() => {
+        console.log("Transfer logged in Firebase (from location)");
+      }).catch((error) => {
+        console.error("Error logging transfer to Firebase (from location):", error);
+      });
 
+      push(toRef, log).then(() => {
+        console.log("Transfer logged in Firebase (to location)");
+      }).catch((error) => {
+        console.error("Error logging transfer to Firebase (to location):", error);
+      });
+
+      // Clear input fields after successful log
       ["product", "amount", "cost", "comment"].forEach(id => $(id).value = "");
       $("unit").selectedIndex = 0;
       updateUnitLabel();
       $("total-value").textContent = "";
 
-      loadLogs();
+      loadLogs(); // Reload the logs after adding the transfer
     }
 
     function createLogEntryHTML(store, month, id, log) {
@@ -229,100 +242,6 @@
         alert('Failed to send invoice!');
       });
     };
-
-    window.editLog = function(store, month, id, btn) {
-      const logRef = ref(db, `logs/${store}/${month}/${id}`);
-      get(logRef).then(snapshot => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        const parent = btn.parentElement;
-        parent.innerHTML = `
-          <input value="${data.date}" id="edit-date" type="date">
-          <input value="${data.product}" id="edit-product" placeholder="Product">
-          <input value="${data.amount}" id="edit-amount" type="number">
-          <select id="edit-unit">${units.map(u => `<option ${u === data.unit ? "selected" : ""}>${u}</option>`)}</select>
-          <input value="${data.costPerUnit || ""}" id="edit-cost" type="number" placeholder="Cost/unit">
-          <input value="${data.comment || ""}" id="edit-comment" placeholder="Comment">
-          <button onclick="saveEdit('${store}', '${month}', '${id}', this)">Save</button>
-        `;
-      });
-    }
-
-    window.saveEdit = function(store, month, id, btn) {
-      const updated = {
-        date: $("edit-date").value,
-        product: $("edit-product").value,
-        amount: parseFloat($("edit-amount").value),
-        unit: $("edit-unit").value,
-        costPerUnit: parseFloat($("edit-cost").value) || null,
-        comment: $("edit-comment").value || ""
-      };
-      update(ref(db, `logs/${store}/${month}/${id}`), updated).then(() => {
-        alert("Edit saved!");
-        loadLogs();
-      });
-    }
-
-    window.loadLogs = function() {
-      $("logs").innerHTML = "";
-      $("current-month").textContent = selectedMonth;
-
-      locations.forEach(store => {
-        const section = document.createElement("div");
-        section.innerHTML = `<h3>${store}</h3>`;
-        const storeRef = ref(db, `logs/${store}/${selectedMonth}`);
-        get(storeRef).then(snapshot => {
-          snapshot.forEach(child => {
-            const div = createLogEntryHTML(store, selectedMonth, child.key, child.val());
-            section.appendChild(div);
-          });
-        });
-        $("logs").appendChild(section);
-      });
-    }
-
-    window.exportExcel = function() {
-      const dbRef = ref(db, "logs");
-      get(dbRef).then(snapshot => {
-        const wb = XLSX.utils.book_new();
-
-        snapshot.forEach(storeSnap => {
-          const storeName = storeSnap.key;
-          let allLogs = [];
-
-          storeSnap.forEach(monthSnap => {
-            monthSnap.forEach(logSnap => {
-              const log = logSnap.val();
-              const isOut = log.from === storeName;
-              const signedAmount = isOut ? -log.amount : log.amount;
-              const totalCost = log.costPerUnit ? signedAmount * log.costPerUnit : "";
-              allLogs.push([
-                log.date, log.from, log.to, log.product,
-                signedAmount, log.unit,
-                log.costPerUnit || "", totalCost || "", log.comment || ""
-              ]);
-            });
-          });
-
-          const ws = XLSX.utils.aoa_to_sheet([
-            ["Date", "From", "To", "Product", "Amount", "Unit", "Cost Per Unit", "Total Cost", "Comment"],
-            ...allLogs
-          ]);
-
-          XLSX.utils.book_append_sheet(wb, ws, storeName.slice(0, 31));
-        });
-
-        XLSX.writeFile(wb, `FoodTransfers_${selectedMonth}.xlsx`);
-      });
-    }
-
-    window.changeMonth = function(offset) {
-      const [year, month] = selectedMonth.split("-").map(Number);
-      const newDate = new Date(year, month - 1 + offset);
-      selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
-      loadLogs();
-    }
 
     window.onload = () => {
       setupUI();
@@ -447,3 +366,4 @@
   <button onclick="exportExcel()">Download Monthly Report</button>
 </body>
 </html>
+
