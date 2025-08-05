@@ -10,6 +10,9 @@
 
   <!-- Firebase & SheetJS -->
   <script type="module">
+    // Initialize EmailJS (this should be placed at the very top)
+    emailjs.init("53xKou9OzR6BhrdWL");  // Your public key
+
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
     import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
@@ -203,6 +206,11 @@
       const subject = `Aidan Food Transfer ${log.date} #${invoiceNumber}`;
       const message = `Invoice #${invoiceNumber}\n\nProduct: ${log.product}\nAmount: ${log.amount} ${log.unit}\nCost per unit: ${log.costPerUnit ?? "N/A"}\nTotal Value: $${(log.amount * log.costPerUnit).toFixed(2)}\nDirection: ${log.from === "Prohibition" ? "Outgoing" : "Incoming"}`;
 
+      console.log("Sending email with the following details:");
+      console.log("Recipient:", to);
+      console.log("Subject:", subject);
+      console.log("Message:", message);
+
       emailjs.send(
         'service_gnviol9',
         'template_6d3c34k',
@@ -319,9 +327,6 @@
       $("date").valueAsDate = new Date();
       updateUnitLabel();
       loadLogs();
-
-      // Initialize EmailJS after everything is loaded
-      emailjs.init("53xKou9OzR6BhrdWL");
     };
   </script>
 
