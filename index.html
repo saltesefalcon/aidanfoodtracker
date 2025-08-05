@@ -5,7 +5,7 @@
   <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   
-   <!-- jsPDF Library -->
+  <!-- jsPDF Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <!-- Firebase & SheetJS -->
@@ -34,6 +34,10 @@
     function $(id) { return document.getElementById(id); }
 
     function setupUI() {
+      // Check Firebase connection
+      console.log("Firebase initialized, loading locations and logs...");
+
+      // Populate dropdowns for "from" and "to"
       locations.forEach(loc => {
         ["from", "to"].forEach(id => {
           const opt = document.createElement("option");
@@ -41,6 +45,8 @@
           $(id).appendChild(opt);
         });
       });
+
+      // Populate unit dropdown
       units.forEach(unit => {
         const opt = document.createElement("option");
         opt.value = opt.textContent = unit;
@@ -50,8 +56,9 @@
       $("unit").addEventListener("change", updateUnitLabel);
       $("cost").addEventListener("input", updateTotalValue);
       $("amount").addEventListener("input", updateTotalValue);
-    }
 
+      loadLogs(); // Load logs after UI setup
+    }
 
     function updateUnitLabel() {
       $("unit-label").textContent = $("unit").value;
