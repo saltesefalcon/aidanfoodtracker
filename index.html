@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Transfer Tracker</title>
+  <title>Food Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -63,10 +63,10 @@
   <script>
     function $(id){ return document.getElementById(id); }
 
-    // Init EmailJS
+    // Initialize EmailJS
     emailjs.init("53xKou9OzR6BhrdWL");
 
-    // Init Firebase (compat)
+    // Initialize Firebase (compat)
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -126,7 +126,6 @@
       return next;
     }
 
-    // Render exactly the stored amount (negative for from, positive for to)
     function renderLogEntry(store,month,key,log){
       const div = document.createElement("div");
       div.className   = log.completed ? "log-entry completed" : "log-entry";
@@ -134,11 +133,10 @@
       div.dataset.month = month;
       div.dataset.key   = key;
 
-      // amount is already stored negative for the 'from' path, positive for 'to'
       const costTxt  = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
       const totalTxt = log.costPerUnit ? ` = $${(log.amount*log.costPerUnit).toFixed(2)}` : "";
       const color    = log.amount < 0 ? "red" : "green";
-      const display  = (log.amount < 0 ? log.amount : "+" + log.amount);
+      const display  = log.amount < 0 ? log.amount : "+" + log.amount;
 
       let html = `
         <span style="color:${color}; font-size:0.95rem">
@@ -174,7 +172,6 @@
       }
     }
 
-    // On new transfer, write negative to 'from' path and positive to 'to'
     async function addTransfer(){
       const date        = $("date").value,
             from        = $("from").value,
@@ -185,27 +182,24 @@
             costPerUnit = parseFloat($("cost").value)||null,
             comment     = $("comment").value||"";
       if (!date||!from||!to||!product||isNaN(amountRaw)||!unit||from===to) {
-        alert("Complete all fields and ensure 'from'≠'to'.");
-        return;
+        alert("Complete all fields and ensure 'from'≠'to'."); return;
       }
 
       const monthKey = date.slice(0,7),
             key      = db.ref(`logs/${from}/${monthKey}`).push().key;
 
-      // Build two records: one negative, one positive
-      const base = { date, from, to, product, unit, costPerUnit, comment, completed:false };
-      const outLog = { ...base, amount: -amountRaw };
-      const inLog  = { ...base, amount:  amountRaw };
+      // Split negative for 'from' and positive for 'to'
+      const base   = { date, from, to, product, unit, costPerUnit, comment, completed:false },
+            outLog = { ...base, amount: -amountRaw },
+            inLog  = { ...base, amount:  amountRaw };
 
       const updates = {};
       updates[`logs/${from}/${monthKey}/${key}`] = outLog;
       updates[`logs/${to}/${monthKey}/${key}`]   = inLog;
       await db.ref().update(updates);
 
-      // Reset form
       ["product","amount","cost","comment"].forEach(id=>$(id).value="");
       $("unit").selectedIndex=0; updateTotalValue();
-
       await loadLogs();
     }
 
@@ -225,18 +219,17 @@
       `;
     }
 
-    // On save, re-split negative/positive into each path
     async function saveEdit(from,to,month,key){
-      const dateRaw     = $("e-date").value,
-            productRaw  = $("e-prod").value,
-            amtRaw      = parseFloat($("e-amt").value),
-            unitRaw     = $("e-unit").value,
-            costRaw     = parseFloat($("e-cost").value)||null,
-            commentRaw  = $("e-cmnt").value||"",
-            base        = { date:dateRaw, from, to, product:productRaw, unit:unitRaw, costPerUnit:costRaw, comment:commentRaw, completed:false };
+      const dateRaw    = $("e-date").value,
+            productRaw = $("e-prod").value,
+            amtRaw     = parseFloat($("e-amt").value),
+            unitRaw    = $("e-unit").value,
+            costRaw    = parseFloat($("e-cost").value)||null,
+            commentRaw = $("e-cmnt").value||"",
+            base       = { date:dateRaw, from, to, product:productRaw, unit:unitRaw, costPerUnit:costRaw, comment:commentRaw, completed:false };
 
-      const outLog = { ...base, amount: -amtRaw };
-      const inLog  = { ...base, amount:  amtRaw };
+      const outLog = { ...base, amount: -amtRaw },
+            inLog  = { ...base, amount:  amtRaw };
 
       const updates = {};
       updates[`logs/${from}/${month}/${key}`] = outLog;
@@ -255,7 +248,7 @@
             doc = new jsPDF(),
             amt = log.amount,
             total = log.costPerUnit ? (amt*log.costPerUnit).toFixed(2) : "0.00",
-            dir = amt<0 ? "Outgoing" : "Incoming";
+            dir = amt<0?"Outgoing":"Incoming";
 
       doc.setFontSize(16); doc.text(`Invoice #${inv}`,20,20);
       doc.setFontSize(12);
@@ -279,8 +272,7 @@
         <div class="buttons">
           <button class="cancel" onclick="window.close()">Cancel</button>
           <button class="send" onclick="window.opener.sendInvoice('${store}','${month}','${key}',${inv});window.close()">Send Invoice</button>
-        </div>
-        </body></html>
+        </div></body></html>
       `);
     }
 
@@ -288,15 +280,15 @@
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value"),
             log  = snap.val();
       if (!log) { alert("Not found"); return; }
-      const other = (log.from===store? log.to : log.from),
-            fromAddr = emailAddresses[log.from],
-            toAddr   = emailAddresses[log.to],
-            subject  = `Aidan Food Transfer ${log.date} #${inv}`,
-            params   = {
+      const other     = (log.from===store? log.to : log.from),
+            fromAddr  = emailAddresses[log.from],
+            toAddr    = emailAddresses[log.to],
+            subject   = `Aidan Food Transfer ${log.date} #${inv}`,
+            params    = {
               invoice_number: inv,
               date:           log.date,
-              from:           log.from,
-              to:             log.to,
+              from_location:  log.from,
+              to_location:    log.to,
               product:        log.product,
               amount:         Math.abs(log.amount),
               unit:           log.unit,
@@ -306,14 +298,12 @@
               comment:        log.comment||"",
               subject
             };
-
       try {
         await emailjs.send('service_gnviol9','template_6d3c34k',{...params,to_email:fromAddr});
         await emailjs.send('service_gnviol9','template_6d3c34k',{...params,to_email:toAddr});
-        // Mark completed
-        const updates = {};
-        updates[`logs/${store}/${month}/${key}/completed`] = true;
-        updates[`logs/${other}/${month}/${key}/completed`] = true;
+        const updates={};
+        updates[`logs/${store}/${month}/${key}/completed`]=true;
+        updates[`logs/${other}/${month}/${key}/completed`]=true;
         await db.ref().update(updates);
         await loadLogs();
         alert("Invoices sent!");
@@ -334,46 +324,38 @@
       db.ref("logs").once("value").then(snap=>{
         const wb = XLSX.utils.book_new();
         snap.forEach(storeSnap=>{
-          const name = storeSnap.key, rows=[];
+          const name=storeSnap.key, rows=[];
           storeSnap.forEach(monthSnap=>{
             monthSnap.forEach(ls=>{
-              const l = ls.val(),
-                    amt = (l.from===name? l.amount : l.amount);
-              rows.push([
-                l.date, l.from, l.to, l.product,
-                amt, l.unit,
-                l.costPerUnit||0,
-                (amt*(l.costPerUnit||0)).toFixed(2),
-                l.comment||""
-              ]);
+              const l=ls.val(),
+                    amt=(l.from===name?l.amount:l.amount);
+              rows.push([l.date,l.from,l.to,l.product,amt,l.unit,l.costPerUnit||0,(amt*(l.costPerUnit||0)).toFixed(2),l.comment||""]);
             });
           });
-          const ws = XLSX.utils.aoa_to_sheet([
-            ["Date","From","To","Product","Amount","Unit","Cost Per Unit","Total","Comment"],
-            ...rows
-          ]);
-          XLSX.utils.book_append_sheet(wb, ws, name.slice(0,31));
+          const ws=XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost Per Unit","Total","Comment"],...rows]);
+          XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));
         });
-        XLSX.writeFile(wb, `FoodTransfers_${selectedMonth}.xlsx`);
+        XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`);
       });
     }
 
-    // Expose functions
-    window.setupUI     = setupUI;
-    window.addTransfer = addTransfer;
-    window.editLog     = editLog;
-    window.saveEdit    = saveEdit;
-    window.openInvoice = openInvoice;
-    window.sendInvoice = sendInvoice;
-    window.changeMonth = changeMonth;
-    window.exportExcel = exportExcel;
+    // Expose
+    window.setupUI=setupUI;
+    window.addTransfer=addTransfer;
+    window.editLog=editLog;
+    window.saveEdit=saveEdit;
+    window.openInvoice=openInvoice;
+    window.sendInvoice=sendInvoice;
+    window.changeMonth=changeMonth;
+    window.exportExcel=exportExcel;
 
     // Initialize
     setupUI();
-    $("date").valueAsDate = new Date();
+    $("date").valueAsDate=new Date();
   </script>
 </body>
 </html>
+
 
 
 
