@@ -8,24 +8,25 @@
   <!-- jsPDF Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Firebase & SheetJS -->
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js"></script>
+  
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-    import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
-    import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
+      authDomain: "aidan-food-tracker.firebaseapp.com",
+      databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com",
+      projectId: "aidan-food-tracker",
+      storageBucket: "aidan-food-tracker.firebasestorage.app",
+      messagingSenderId: "397728832351",
+      appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
+    };
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
-  authDomain: "aidan-food-tracker.firebaseapp.com",
-  databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com",
-  projectId: "aidan-food-tracker",
-  storageBucket: "aidan-food-tracker.firebasestorage.app",
-  messagingSenderId: "397728832351",
-  appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
-};
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    // Initialize Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.database(app);
 
     const locations = ["Prohibition", "Tulia Osteria", "Ce Soir", "Beacon"];
     const units = ["oz", "lb", "kg", "fl oz", "ml", "L"];
@@ -229,100 +230,6 @@ const firebaseConfig = {
         alert('Failed to send invoice!');
       });
     };
-
-    window.editLog = function(store, month, id, btn) {
-      const logRef = ref(db, `logs/${store}/${month}/${id}`);
-      get(logRef).then(snapshot => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        const parent = btn.parentElement;
-        parent.innerHTML = `
-          <input value="${data.date}" id="edit-date" type="date">
-          <input value="${data.product}" id="edit-product" placeholder="Product">
-          <input value="${data.amount}" id="edit-amount" type="number">
-          <select id="edit-unit">${units.map(u => `<option ${u === data.unit ? "selected" : ""}>${u}</option>`)}</select>
-          <input value="${data.costPerUnit || ""}" id="edit-cost" type="number" placeholder="Cost/unit">
-          <input value="${data.comment || ""}" id="edit-comment" placeholder="Comment">
-          <button onclick="saveEdit('${store}', '${month}', '${id}', this)">Save</button>
-        `;
-      });
-    }
-
-    window.saveEdit = function(store, month, id, btn) {
-      const updated = {
-        date: $("edit-date").value,
-        product: $("edit-product").value,
-        amount: parseFloat($("edit-amount").value),
-        unit: $("edit-unit").value,
-        costPerUnit: parseFloat($("edit-cost").value) || null,
-        comment: $("edit-comment").value || ""
-      };
-      update(ref(db, `logs/${store}/${month}/${id}`), updated).then(() => {
-        alert("Edit saved!");
-        loadLogs();
-      });
-    }
-
-    window.loadLogs = function() {
-      $("logs").innerHTML = "";
-      $("current-month").textContent = selectedMonth;
-
-      locations.forEach(store => {
-        const section = document.createElement("div");
-        section.innerHTML = `<h3>${store}</h3>`;
-        const storeRef = ref(db, `logs/${store}/${selectedMonth}`);
-        get(storeRef).then(snapshot => {
-          snapshot.forEach(child => {
-            const div = createLogEntryHTML(store, selectedMonth, child.key, child.val());
-            section.appendChild(div);
-          });
-        });
-        $("logs").appendChild(section);
-      });
-    }
-
-    window.exportExcel = function() {
-      const dbRef = ref(db, "logs");
-      get(dbRef).then(snapshot => {
-        const wb = XLSX.utils.book_new();
-
-        snapshot.forEach(storeSnap => {
-          const storeName = storeSnap.key;
-          let allLogs = [];
-
-          storeSnap.forEach(monthSnap => {
-            monthSnap.forEach(logSnap => {
-              const log = logSnap.val();
-              const isOut = log.from === storeName;
-              const signedAmount = isOut ? -log.amount : log.amount;
-              const totalCost = log.costPerUnit ? signedAmount * log.costPerUnit : "";
-              allLogs.push([
-                log.date, log.from, log.to, log.product,
-                signedAmount, log.unit,
-                log.costPerUnit || "", totalCost || "", log.comment || ""
-              ]);
-            });
-          });
-
-          const ws = XLSX.utils.aoa_to_sheet([
-            ["Date", "From", "To", "Product", "Amount", "Unit", "Cost Per Unit", "Total Cost", "Comment"],
-            ...allLogs
-          ]);
-
-          XLSX.utils.book_append_sheet(wb, ws, storeName.slice(0, 31));
-        });
-
-        XLSX.writeFile(wb, `FoodTransfers_${selectedMonth}.xlsx`);
-      });
-    }
-
-    window.changeMonth = function(offset) {
-      const [year, month] = selectedMonth.split("-").map(Number);
-      const newDate = new Date(year, month - 1 + offset);
-      selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
-      loadLogs();
-    }
 
     window.onload = () => {
       setupUI();
