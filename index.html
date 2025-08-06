@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -46,7 +46,7 @@
   <button onclick="addTransfer()">Submit Transfer</button>
 
   <h2>
-    Logs for
+    Logs for 
     <button onclick="changeMonth(-1)">&lt;</button>
     <span id="current-month"></span>
     <button onclick="changeMonth(1)">&gt;</button>
@@ -62,13 +62,13 @@
   <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
 
   <script>
-    // Helper
+    // DOM helper
     function $(id){ return document.getElementById(id); }
 
-    // EmailJS
+    // EmailJS init
     emailjs.init("53xKou9OzR6BhrdWL");
 
-    // Firebase
+    // Firebase init (compat)
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -94,9 +94,8 @@
       "Ce Soir":       "accounts@cesoirbrasserie.com"
     };
 
-    // UI Setup
+    // Populate selects and initial logs
     async function setupUI(){
-      // Populate selects
       locations.forEach(loc=>{
         ["from","to"].forEach(id=>{
           const o=document.createElement("option");
@@ -109,18 +108,15 @@
         o.value=o.textContent=u;
         $("unit").appendChild(o);
       });
+      $("unit").addEventListener("change",updateTotalValue);
+      $("amount").addEventListener("input",updateTotalValue);
+      $("cost").addEventListener("input",updateTotalValue);
 
-      // Live value updates
-      $("unit").addEventListener("change",updateUnitLabel);
-      $("amount").addEventListener("input",updateUnitLabel);
-      $("cost").addEventListener("input",updateUnitLabel);
-
-      // Initial load
       await loadLogs();
     }
 
-    // Update total & unit label
-    function updateUnitLabel(){
+    // Update cost label & total
+    function updateTotalValue(){
       $("unit-label").textContent = $("unit").value;
       const a=parseFloat($("amount").value),
             c=parseFloat($("cost").value);
@@ -130,14 +126,14 @@
 
     // Invoice counter
     async function getNextInvoiceNumber(){
-      const snap = await db.ref("invoiceCounter").get();
+      const snap = await db.ref("invoiceCounter").once("value");
       const cur  = snap.exists()?snap.val():1000;
       const next = cur+1;
       await db.ref().update({invoiceCounter:next});
       return next;
     }
 
-    // Render a log entry
+    // Render one log
     function renderLogEntry(store,month,key,log){
       const div=document.createElement("div");
       div.className="log-entry";
@@ -162,21 +158,23 @@
       return div;
     }
 
-    // Load logs
+    // Load logs for month
     async function loadLogs(){
       $("logs").innerHTML="";
-      $("current-month").textContent = selectedMonth;
+      $("current-month").textContent=selectedMonth;
 
       for(const store of locations){
         const section=document.createElement("div");
         section.innerHTML=`<h3>${store}</h3>`;
-        const snap=await db.ref(`logs/${store}/${selectedMonth}`).get();
-        snap.forEach(ch=>section.appendChild(renderLogEntry(store,selectedMonth,ch.key,ch.val())));
+        const snap=await db.ref(`logs/${store}/${selectedMonth}`).once("value");
+        snap.forEach(child=>{
+          section.appendChild(renderLogEntry(store,selectedMonth,child.key,child.val()));
+        });
         $("logs").appendChild(section);
       }
     }
 
-    // Add transfer
+    // Submit new transfer
     async function addTransfer(){
       const date        = $("date").value,
             from        = $("from").value,
@@ -188,31 +186,30 @@
             comment     = $("comment").value||"";
 
       if(!date||!from||!to||!product||isNaN(amount)||!unit||from===to){
-        return alert("Complete all fields and ensure ‘from’≠‘to’."); 
+        alert("Complete all fields and ensure ‘from’≠‘to’."); return;
       }
 
       const monthKey = date.slice(0,7),
             log      = {date,from,to,product,amount,unit,costPerUnit,comment},
             key      = db.ref(`logs/${from}/${monthKey}`).push().key;
 
-      const updates={};
-      updates[`logs/${from}/${monthKey}/${key}`] = log;
-      updates[`logs/${to  }/${monthKey}/${key}`] = log;
-      await db.ref().update(updates);
+      const u={};
+      u[`logs/${from}/${monthKey}/${key}`] = log;
+      u[`logs/${to  }/${monthKey}/${key}`] = log;
+      await db.ref().update(u);
 
-      // Clear form
       ["product","amount","cost","comment"].forEach(id=>$(id).value="");
-      $("unit").selectedIndex=0; updateUnitLabel();
+      $("unit").selectedIndex=0;
+      updateTotalValue();
 
-      // Reload logs
       await loadLogs();
     }
 
-    // Edit log
+    // Edit a log
     async function editLog(store,month,key,btn){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).get(),
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"),
             data=snap.val();
-      if(!data) return alert("Not found");
+      if(!data) { alert("Not found"); return; }
 
       const p=btn.parentElement;
       p.innerHTML=`
@@ -225,8 +222,6 @@
         <button onclick="saveEdit('${data.from}','${data.to}','${month}','${key}')">Save</button>
       `;
     }
-
-    // Save edited log
     async function saveEdit(from,to,month,key){
       const upd={
         date:        $("e-date").value,
@@ -243,15 +238,16 @@
       await loadLogs();
     }
 
-    // Invoice preview
+    // PDF preview
     async function openInvoice(store,month,key){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).get(),
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"),
             log=snap.val();
-      if(!log) return alert("Not found");
+      if(!log) { alert("Not found"); return; }
 
       const inv=await getNextInvoiceNumber(),
-            {jsPDF}=window.jspdf, doc=new jsPDF(),
-            isOut=log.from===store, sign=isOut?"-":"+" , total=log.costPerUnit?(log.amount*log.costPerUnit).toFixed(2):"N/A";
+            {jsPDF}=window.jspdf,
+            doc=new jsPDF(),
+            isOut=log.from===store, sign=isOut?"-":"+", total=log.costPerUnit?(log.amount*log.costPerUnit).toFixed(2):"N/A";
 
       doc.setFontSize(16); doc.text(`Invoice #${inv}`,20,20);
       doc.setFontSize(12);
@@ -264,11 +260,18 @@
       doc.text(`Total: $${total}`,20,90);
       doc.text(`Direction: ${isOut?"Outgoing":"Incoming"}`,20,100);
 
-      const uri=doc.output("datauristring"), win=window.open("","_blank");
+      const uri=doc.output("datauristring"),
+            win=window.open("","_blank");
       win.document.write(`
         <html><head><title>Invoice Preview</title>
-        <style>body{margin:0;font-family:Arial;}iframe{width:100%;height:90vh;border:none;}.buttons{padding:10px;display:flex;justify-content:space-around;background:#f0f0f0;border-top:1px solid #ccc;}button{padding:10px 20px;font-size:1rem;border:none;border-radius:5px;cursor:pointer;transition:.2s;}button:active{transform:scale(.98);} .send{background:green;color:#fff;} .cancel{background:red;color:#fff;}</style>
-        </head><body>
+        <style>
+          body{margin:0;font-family:Arial;}
+          iframe{width:100%;height:90vh;border:none;}
+          .buttons{padding:10px;display:flex;justify-content:space-around;background:#f0f0f0;border-top:1px solid #ccc;}
+          button{padding:10px 20px;font-size:1rem;border:none;border-radius:5px;cursor:pointer;transition:.2s;}
+          button:active{transform:scale(.98);}
+          .send{background:green;color:#fff;} .cancel{background:red;color:#fff;}
+        </style></head><body>
         <iframe src="${uri}"></iframe>
         <div class="buttons">
           <button class="cancel" onclick="window.close()">Cancel</button>
@@ -279,11 +282,11 @@
         </div></body></html>`);
     }
 
-    // Send invoice & mark complete
+    // Send via EmailJS & lock
     async function sendInvoice(store,month,key,inv){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).get(),
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"),
             log=snap.val();
-      if(!log) return alert("Not found");
+      if(!log) { alert("Not found"); return; }
 
       const fromAddr=emailAddresses[log.from],
             toAddr  =emailAddresses[log.to],
@@ -310,16 +313,17 @@
       }
     }
 
-    // Change month
+    // Month nav
     function changeMonth(offset){
-      const [y,m]=selectedMonth.split("-").map(n=>+n), d=new Date(y,m-1+offset);
+      const [y,m]=selectedMonth.split("-").map(n=>+n),
+            d     =new Date(y,m-1+offset);
       selectedMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
       loadLogs();
     }
 
-    // Excel export
+    // Export Excel
     function exportExcel(){
-      db.ref("logs").get().then(snap=>{
+      db.ref("logs").once("value").then(snap=>{
         const wb=XLSX.utils.book_new();
         snap.forEach(storeSnap=>{
           const name=storeSnap.key, rows=[];
@@ -336,21 +340,23 @@
       });
     }
 
-    // Expose global handlers
-    window.addTransfer   = addTransfer;
-    window.editLog       = editLog;
-    window.saveEdit      = saveEdit;
-    window.openInvoice   = openInvoice;
-    window.sendInvoice   = sendInvoice;
-    window.changeMonth   = changeMonth;
-    window.exportExcel   = exportExcel;
+    // Expose onclick handlers
+    window.setupUI     = setupUI;
+    window.addTransfer = addTransfer;
+    window.editLog     = editLog;
+    window.saveEdit    = saveEdit;
+    window.openInvoice = openInvoice;
+    window.sendInvoice = sendInvoice;
+    window.changeMonth = changeMonth;
+    window.exportExcel = exportExcel;
 
-    // Kick off UI
+    // Kick things off
     setupUI();
-    $("date").valueAsDate = new Date();
+    $("date").valueAsDate=new Date();
   </script>
 </body>
 </html>
+
 
 
 
