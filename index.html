@@ -166,6 +166,7 @@
       const div = document.createElement("div");
       div.className = "log-entry";
 
+      // Ensure all fields are defined before trying to access them
       const cost = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
       const totalCost = log.costPerUnit ? ` = $${(log.amount * log.costPerUnit).toFixed(2)}` : "";
 
@@ -173,6 +174,7 @@
       const sign = isOut ? "-" : "+";
       const color = isOut ? "red" : "green";
 
+      // Format the log entry correctly
       div.innerHTML = `
         <div style="background: #fff; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #ccc;">
           <span style="color:${color}; font-size:1rem;">
