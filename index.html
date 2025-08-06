@@ -11,7 +11,7 @@
   <!-- Firebase & SheetJS -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-    import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+    import { getDatabase, ref, push, update, get, set } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
     const firebaseConfig = {
@@ -24,6 +24,7 @@
       appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
     };
 
+    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
@@ -55,6 +56,9 @@
       $("amount").addEventListener("input", updateTotalValue);
 
       loadLogs(); // Load logs after UI setup
+
+      // Add event listener for Submit Transfer button
+      $("submit-transfer").addEventListener("click", addTransfer);
     }
 
     function updateUnitLabel() {
@@ -82,6 +86,7 @@
       return next;
     }
 
+    // Add transfer function
     function addTransfer() {
       const date = $("date").value;
       const from = $("from").value;
@@ -104,26 +109,26 @@
       const monthKey = date.slice(0, 7);
       const log = { date, from, to, product, amount, unit, costPerUnit, comment };
 
-       // Log the data being pushed to Firebase
-      console.log("Data being pushed to Firebase:", log);
+      // Log the data being pushed to Firebase
+      console.log("Data being pushed to Firebase:", log); // <-- Add this line here
 
       // Log path and pushing to Firebase
       console.log(`Pushing data to: logs/${from}/${monthKey}`);
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
 
-      // Push data to Firebase and log success or failure
-      push(fromRef, log)
+      // Use set() instead of push() for direct writing to a path (for debugging)
+      set(fromRef, log)
         .then(() => {
-          console.log("Transfer added successfully to 'from' store.");
+          console.log("Transfer successfully added to 'from' store.");
         })
         .catch((error) => {
           console.error("Error adding transfer to 'from' store:", error);
         });
 
-      push(toRef, log)
+      set(toRef, log)
         .then(() => {
-          console.log("Transfer added successfully to 'to' store.");
+          console.log("Transfer successfully added to 'to' store.");
         })
         .catch((error) => {
           console.error("Error adding transfer to 'to' store:", error);
@@ -138,6 +143,38 @@
       loadLogs(); // Reload logs after adding transfer
     }
 
+    // Test Reading Data from Firebase (Optional - for debugging)
+    const testRef = ref(db, "logs/Prohibition/2025-08");
+    get(testRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        console.log("Test data read:", snapshot.val());
+      } else {
+        console.log("No data available for this path.");
+      }
+    }).catch((error) => {
+      console.error("Error reading test data:", error);
+    });
+
+    // Loading logs
+    function loadLogs() {
+      $("logs").innerHTML = "";
+      $("current-month").textContent = selectedMonth;
+
+      locations.forEach(store => {
+        const section = document.createElement("div");
+        section.innerHTML = `<h3>${store}</h3>`;
+        const storeRef = ref(db, `logs/${store}/${selectedMonth}`);
+        get(storeRef).then(snapshot => {
+          snapshot.forEach(child => {
+            const div = createLogEntryHTML(store, selectedMonth, child.key, child.val());
+            section.appendChild(div);
+          });
+        });
+        $("logs").appendChild(section);
+      });
+    }
+
+    // Create log entry HTML
     function createLogEntryHTML(store, month, id, log) {
       const div = document.createElement("div");
       div.className = "log-entry";
@@ -161,195 +198,6 @@
       return div;
     }
 
-    window.createInvoice = async function(store, month, id) {
-      const logRef = ref(db, `logs/${store}/${month}/${id}`);
-      const snapshot = await get(logRef);
-      const log = snapshot.val();
-      if (!log) return alert("Log not found.");
-
-      const invoiceNumber = await getNextInvoiceNumber();
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-
-      const isOut = log.from === store;
-      const sign = isOut ? "-" : "+";
-      const total = log.costPerUnit ? (log.amount * log.costPerUnit).toFixed(2) : "N/A";
-
-      doc.setFontSize(16);
-      doc.text(`Invoice #${invoiceNumber}`, 20, 20);
-      doc.setFontSize(12);
-      doc.text(`From: ${log.from}`, 20, 30);
-      doc.text(`To: ${log.to}`, 20, 40);
-      doc.text(`Date: ${log.date}`, 20, 50);
-      doc.text(`Product: ${log.product}`, 20, 60);
-      doc.text(`Amount: ${sign}${log.amount} ${log.unit}`, 20, 70);
-      doc.text(`Cost per unit: $${log.costPerUnit ?? "N/A"}`, 20, 80);
-      doc.text(`Total Value: $${total}`, 20, 90);
-      doc.text(`Direction: ${isOut ? "Outgoing" : "Incoming"}`, 20, 100);
-
-      const pdfDataUri = doc.output("datauristring");
-      const win = window.open("", "_blank");
-      win.document.write(`
-        <html><head><title>Invoice Preview</title>
-        <style>
-          body { margin: 0; font-family: Arial; }
-          iframe { width: 100%; height: 90vh; border: none; }
-          .buttons {
-            padding: 10px; display: flex; justify-content: space-around;
-            background: #f0f0f0; border-top: 1px solid #ccc;
-          }
-          button {
-            padding: 10px 20px; font-size: 1rem;
-            border: none; border-radius: 5px; cursor: pointer;
-            transition: background-color 0.3s ease;
-          }
-          button:active {
-            transform: scale(0.98);
-            background-color: #003f7f;
-          }
-          .send { background: green; color: white; }
-          .cancel { background: red; color: white; }
-        </style>
-        </head><body>
-        <iframe src="${pdfDataUri}"></iframe>
-        <div class="buttons">
-          <button class="cancel" onclick="window.close()">Cancel</button>
-          <button class="send" onclick="sendInvoice(${JSON.stringify({ log, invoiceNumber, pdfDataUri })}, this)">Send Invoice</button>
-        </div>
-        </body></html>
-      `);
-    };
-
-    window.sendInvoice = function({ log, invoiceNumber, pdfDataUri }, button) {
-      const emailAddresses = {
-        "Prohibition": "accounts@prohibitionsocialhouse.com",
-        "Beacon": "accounts@beaconsocialhouse.com",
-        "Tulia Osteria": "accounts@tuliaosteria.com",
-        "Ce Soir": "accounts@cesoirbrasserie.com"
-      };
-
-      const to = log.from === "Prohibition" ? emailAddresses["Prohibition"] : emailAddresses[log.to];
-      const subject = `Aidan Food Transfer ${log.date} #${invoiceNumber}`;
-      const message = `Invoice #${invoiceNumber}\n\nProduct: ${log.product}\nAmount: ${log.amount} ${log.unit}\nCost per unit: ${log.costPerUnit ?? "N/A"}\nTotal Value: $${(log.amount * log.costPerUnit).toFixed(2)}\nDirection: ${log.from === "Prohibition" ? "Outgoing" : "Incoming"}`;
-
-      console.log("Sending email with the following details:");
-      console.log("Recipient:", to);
-      console.log("Subject:", subject);
-      console.log("Message:", message);
-
-      emailjs.send(
-        'service_gnviol9',
-        'template_6d3c34k',
-        {
-          invoice_number: invoiceNumber,
-          date: log.date,
-          from: log.from,
-          to: log.to
-        }
-      ).then((response) => {
-        console.log('Email sent successfully', response);
-        alert('Invoice sent!');
-        button.disabled = true;  // Disable the button after sending
-      }, (error) => {
-        console.log('Error sending email', error);
-        alert('Failed to send invoice!');
-      });
-    };
-
-    window.editLog = function(store, month, id, btn) {
-      const logRef = ref(db, `logs/${store}/${month}/${id}`);
-      get(logRef).then(snapshot => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        const parent = btn.parentElement;
-        parent.innerHTML = `
-          <input value="${data.date}" id="edit-date" type="date">
-          <input value="${data.product}" id="edit-product" placeholder="Product">
-          <input value="${data.amount}" id="edit-amount" type="number">
-          <select id="edit-unit">${units.map(u => `<option ${u === data.unit ? "selected" : ""}>${u}</option>`)}</select>
-          <input value="${data.costPerUnit || ""}" id="edit-cost" type="number" placeholder="Cost/unit">
-          <input value="${data.comment || ""}" id="edit-comment" placeholder="Comment">
-          <button onclick="saveEdit('${store}', '${month}', '${id}', this)">Save</button>
-        `;
-      });
-    }
-
-    window.saveEdit = function(store, month, id, btn) {
-      const updated = {
-        date: $("edit-date").value,
-        product: $("edit-product").value,
-        amount: parseFloat($("edit-amount").value),
-        unit: $("edit-unit").value,
-        costPerUnit: parseFloat($("edit-cost").value) || null,
-        comment: $("edit-comment").value || ""
-      };
-      update(ref(db, `logs/${store}/${month}/${id}`), updated).then(() => {
-        alert("Edit saved!");
-        loadLogs();
-      });
-    }
-
-    window.loadLogs = function() {
-      $("logs").innerHTML = "";
-      $("current-month").textContent = selectedMonth;
-
-      locations.forEach(store => {
-        const section = document.createElement("div");
-        section.innerHTML = `<h3>${store}</h3>`;
-        const storeRef = ref(db, `logs/${store}/${selectedMonth}`);
-        get(storeRef).then(snapshot => {
-          snapshot.forEach(child => {
-            const div = createLogEntryHTML(store, selectedMonth, child.key, child.val());
-            section.appendChild(div);
-          });
-        });
-        $("logs").appendChild(section);
-      });
-    }
-
-    window.exportExcel = function() {
-      const dbRef = ref(db, "logs");
-      get(dbRef).then(snapshot => {
-        const wb = XLSX.utils.book_new();
-
-        snapshot.forEach(storeSnap => {
-          const storeName = storeSnap.key;
-          let allLogs = [];
-
-          storeSnap.forEach(monthSnap => {
-            monthSnap.forEach(logSnap => {
-              const log = logSnap.val();
-              const isOut = log.from === storeName;
-              const signedAmount = isOut ? -log.amount : log.amount;
-              const totalCost = log.costPerUnit ? signedAmount * log.costPerUnit : "";
-              allLogs.push([
-                log.date, log.from, log.to, log.product,
-                signedAmount, log.unit,
-                log.costPerUnit || "", totalCost || "", log.comment || ""
-              ]);
-            });
-          });
-
-          const ws = XLSX.utils.aoa_to_sheet([
-            ["Date", "From", "To", "Product", "Amount", "Unit", "Cost Per Unit", "Total Cost", "Comment"],
-            ...allLogs
-          ]);
-
-          XLSX.utils.book_append_sheet(wb, ws, storeName.slice(0, 31));
-        });
-
-        XLSX.writeFile(wb, `FoodTransfers_${selectedMonth}.xlsx`);
-      });
-    }
-
-    window.changeMonth = function(offset) {
-      const [year, month] = selectedMonth.split("-").map(Number);
-      const newDate = new Date(year, month - 1 + offset);
-      selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
-      loadLogs();
-    }
-
     window.onload = () => {
       setupUI();
       $("date").valueAsDate = new Date();
@@ -357,86 +205,6 @@
       loadLogs();
     };
   </script>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 15px;
-      max-width: 700px;
-      margin: auto;
-      background: #f9f9f9;
-    }
-
-    h1, h2, h3 {
-      text-align: center;
-      margin-bottom: 10px;
-    }
-
-    input, select, button {
-      width: 100%;
-      padding: 8px;
-      margin: 6px 0;
-      box-sizing: border-box;
-      font-size: 1rem;
-    }
-
-    label {
-      font-weight: bold;
-      display: block;
-      margin-top: 10px;
-    }
-
-    .log-entry {
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 10px;
-      margin: 8px 0;
-      border-radius: 6px;
-    }
-
-    #total-value {
-      font-size: 0.95rem;
-      color: #333;
-      margin-bottom: 10px;
-    }
-
-    @media (min-width: 600px) {
-      .form-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-
-      input, select {
-        width: auto;
-        flex: 1;
-      }
-
-      label {
-        display: inline-block;
-        width: auto;
-        margin-top: 0;
-      }
-    }
-
-    button {
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background-color 0.3s ease;
-    }
-
-    button:hover {
-      background: #0056b3;
-    }
-
-    button:active {
-      background-color: #003f7f;
-      transform: scale(0.98);
-    }
-  </style>
 </head>
 <body>
   <h1>Food Transfer Tracker</h1>
@@ -459,7 +227,8 @@
     <label>Comment: <input id="comment" placeholder="Optional comment"></label>
   </div>
 
-  <button onclick="addTransfer()">Submit Transfer</button>
+  <!-- Button to Submit Transfer -->
+  <button id="submit-transfer">Submit Transfer</button>
 
   <h2>
     Logs for 
