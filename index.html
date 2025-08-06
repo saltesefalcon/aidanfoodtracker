@@ -27,6 +27,8 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
+    console.log("Firebase initialized:", app.name);  // Ensure Firebase is initialized
+
     const locations = ["Prohibition", "Tulia Osteria", "Ce Soir", "Beacon"];
     const units = ["oz", "lb", "kg", "fl oz", "ml", "L"];
     let selectedMonth = new Date().toISOString().slice(0, 7);
@@ -102,10 +104,12 @@
       const monthKey = date.slice(0, 7);
       const log = { date, from, to, product, amount, unit, costPerUnit, comment };
 
-      // Push data to Firebase and log success or failure
+      // Log path and pushing to Firebase
+      console.log(`Pushing to: logs/${from}/${monthKey}`);
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
 
+      // Push data to Firebase and log success or failure
       push(fromRef, log)
         .then(() => {
           console.log("Transfer added successfully to 'from' store.");
@@ -122,6 +126,7 @@
           console.error("Error adding transfer to 'to' store:", error);
         });
 
+      // Reset the form fields
       ["product", "amount", "cost", "comment"].forEach(id => $(id).value = "");
       $("unit").selectedIndex = 0;
       updateUnitLabel();
