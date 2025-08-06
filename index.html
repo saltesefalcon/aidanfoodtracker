@@ -2,16 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Aidan Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  
+
   <!-- jsPDF Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <!-- Firebase & SheetJS -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-    import { getDatabase, ref, push, update, get, set } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+    import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
     const firebaseConfig = {
@@ -19,16 +19,13 @@
       authDomain: "aidan-food-tracker.firebaseapp.com",
       databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com",
       projectId: "aidan-food-tracker",
-      storageBucket: "aidan-food-tracker.firebasestorage.app",
+      storageBucket: "aidan-food-tracker.appspot.com",
       messagingSenderId: "397728832351",
       appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-
-    console.log("Firebase initialized:", app.name);  // Ensure Firebase is initialized
 
     const locations = ["Prohibition", "Tulia Osteria", "Ce Soir", "Beacon"];
     const units = ["oz", "lb", "kg", "fl oz", "ml", "L"];
@@ -56,8 +53,6 @@
       $("amount").addEventListener("input", updateTotalValue);
 
       loadLogs(); // Load logs after UI setup
-      // Add event listener for Submit Transfer button
-      $("submit-transfer").addEventListener("click", addTransfer);
     }
 
     function updateUnitLabel() {
@@ -85,7 +80,6 @@
       return next;
     }
 
-    // Add transfer function
     function addTransfer() {
       const date = $("date").value;
       const from = $("from").value;
@@ -96,10 +90,6 @@
       const costPerUnit = parseFloat($("cost").value) || null;
       const comment = $("comment").value || "";
 
-      // Debugging logs to inspect form values
-      console.log({ date, from, to, product, amount, unit, costPerUnit, comment });
-
-      // Validation check
       if (!date || !from || !to || !product || isNaN(amount) || !unit || from === to) {
         alert("Please complete all required fields and make sure 'from' and 'to' are different.");
         return;
@@ -108,42 +98,50 @@
       const monthKey = date.slice(0, 7);
       const log = { date, from, to, product, amount, unit, costPerUnit, comment };
 
-      // Log the data being pushed to Firebase
-      console.log("Data being pushed to Firebase:", log); // <-- Add this line here
-
-      // Log path and pushing to Firebase
-      console.log(`Pushing data to: logs/${from}/${monthKey}`);
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
+      push(fromRef, log);
+      push(toRef, log);
 
-      // Use set() instead of push() for direct writing to a path (for debugging)
-      set(fromRef, log)
-        .then(() => {
-          console.log("Transfer successfully added to 'from' store.");
-        })
-        .catch((error) => {
-          console.error("Error adding transfer to 'from' store:", error);
-        });
-
-      set(toRef, log)
-        .then(() => {
-          console.log("Transfer successfully added to 'to' store.");
-        })
-        .catch((error) => {
-          console.error("Error adding transfer to 'to' store:", error);
-        });
-
-      // Reset the form fields
       ["product", "amount", "cost", "comment"].forEach(id => $(id).value = "");
       $("unit").selectedIndex = 0;
       updateUnitLabel();
       $("total-value").textContent = "";
 
-      loadLogs(); // Reload logs after adding transfer
+      loadLogs();
     }
 
-    // Loading logs function
-    function loadLogs() {
+    function createLogEntryHTML(store, month, id, log) {
+      const div = document.createElement("div");
+      div.className = "log-entry";
+
+      const product = log.product || "Unknown";
+      const amount = log.amount || 0;
+      const unit = log.unit || "";
+      const date = log.date || "";
+      const costPerUnit = log.costPerUnit;
+      const comment = log.comment || "";
+
+      const cost = costPerUnit ? ` @ $${costPerUnit.toFixed(2)} each` : "";
+      const totalCost = costPerUnit ? ` = $${(amount * costPerUnit).toFixed(2)}` : "";
+
+      const isOut = log.from === store;
+      const sign = isOut ? "-" : "+";
+      const color = isOut ? "red" : "green";
+
+      div.innerHTML = `
+        <span style="color:${color}; font-size:0.95rem;">
+          ${sign}${amount} ${unit} of ${product}${cost}${totalCost}
+          (${date}${comment ? ` | ${comment}` : ""})
+        </span><br>
+        <button onclick="editLog('${store}', '${month}', '${id}', this)">Edit</button>
+        <button onclick="createInvoice('${store}', '${month}', '${id}')">Create Invoice</button>
+      `;
+
+      return div;
+    }
+
+    window.loadLogs = function () {
       $("logs").innerHTML = "";
       $("current-month").textContent = selectedMonth;
 
@@ -152,42 +150,25 @@
         section.innerHTML = `<h3>${store}</h3>`;
         const storeRef = ref(db, `logs/${store}/${selectedMonth}`);
         get(storeRef).then(snapshot => {
-          snapshot.forEach(child => {
-            const div = createLogEntryHTML(store, selectedMonth, child.key, child.val());
-            section.appendChild(div);
-          });
+          if (snapshot.exists()) {
+            const logs = snapshot.val();
+            Object.entries(logs).forEach(([id, log]) => {
+              const div = createLogEntryHTML(store, selectedMonth, id, log);
+              section.appendChild(div);
+            });
+          } else {
+            section.innerHTML += "<p>No logs found.</p>";
+          }
         });
         $("logs").appendChild(section);
       });
     }
 
-    // Create log entry HTML with proper formatting
-    function createLogEntryHTML(store, month, id, log) {
-      const div = document.createElement("div");
-      div.className = "log-entry";
-
-      // Ensure all fields are defined before trying to access them
-      const cost = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
-      const totalCost = log.costPerUnit ? ` = $${(log.amount * log.costPerUnit).toFixed(2)}` : "";
-
-      const isOut = log.from === store;
-      const sign = isOut ? "-" : "+";
-      const color = isOut ? "red" : "green";
-
-      // Format the log entry correctly
-      div.innerHTML = `
-        <div style="background: #fff; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #ccc;">
-          <span style="color:${color}; font-size:1rem;">
-            ${sign} ${log.amount} ${log.unit} of ${log.product}${cost}${totalCost}
-            (${log.date}${log.comment ? ` | ${log.comment}` : ""})
-          </span>
-          <br>
-          <button onclick="editLog('${store}', '${month}', '${id}', this)" style="margin-top: 5px; padding: 5px 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">Edit</button>
-          <button onclick="createInvoice('${store}', '${month}', '${id}')" style="margin-top: 5px; padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">Create Invoice</button>
-        </div>
-      `;
-
-      return div;
+    window.changeMonth = function (offset) {
+      const [year, month] = selectedMonth.split("-").map(Number);
+      const newDate = new Date(year, month - 1 + offset);
+      selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+      loadLogs();
     }
 
     window.onload = () => {
@@ -276,24 +257,6 @@
       background-color: #003f7f;
       transform: scale(0.98);
     }
-
-    /* Custom styles for buttons */
-    .edit-btn, .invoice-btn {
-      margin-top: 5px;
-      padding: 5px 10px;
-      border-radius: 5px;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-
-    .edit-btn {
-      background-color: #007bff;
-    }
-
-    .invoice-btn {
-      background-color: #28a745;
-    }
   </style>
 </head>
 <body>
@@ -317,23 +280,15 @@
     <label>Comment: <input id="comment" placeholder="Optional comment"></label>
   </div>
 
-  <!-- Button to Submit Transfer -->
-  <button id="submit-transfer">Submit Transfer</button>
+  <button onclick="addTransfer()">Submit Transfer</button>
 
   <h2>
-    Logs for 
     <button onclick="changeMonth(-1)">&lt;</button>
     <span id="current-month"></span>
     <button onclick="changeMonth(1)">&gt;</button>
   </h2>
 
   <div id="logs"></div>
-
-  <button onclick="exportExcel()">Download Monthly Report</button>
 </body>
 </html>
-
-
-
-
 
