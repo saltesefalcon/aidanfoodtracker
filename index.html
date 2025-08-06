@@ -1,182 +1,227 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Aidan Food Tracker</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Food Transfer Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: auto; }
+    h1, h2 { text-align: center; }
+    .form-row { margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .log-entry { border-left: 4px solid gray; background: #f9f9f9; margin: 5px 0; padding: 10px; }
+    .log-entry.red { border-color: red; color: red; }
+    .log-entry.green { border-color: green; color: green; }
+    .inventory-logs details { margin-bottom: 10px; }
+    .month-header { font-weight: bold; margin-top: 10px; }
+    input[type="text"], input[type="number"], input[type="date"], select {
+      padding: 5px;
+      min-width: 100px;
+    }
+    button { padding: 6px 10px; }
+  </style>
+</head>
+<body>
+  <h1>Food Transfer Tracker</h1>
+
+  <h2>Add Transfer</h2>
+  <div class="form-row">
+    <input type="date" id="transferDate">
+    <select id="fromLocation">
+      <option value="Prohibition">Prohibition</option>
+      <option value="Tulia">Tulia</option>
+      <option value="Beacon">Beacon</option>
+      <option value="Ce Soir">Ce Soir</option>
+    </select>
+    <select id="toLocation">
+      <option value="Prohibition">Prohibition</option>
+      <option value="Tulia">Tulia</option>
+      <option value="Beacon">Beacon</option>
+      <option value="Ce Soir">Ce Soir</option>
+    </select>
+    <input type="text" id="productName" placeholder="Product Name">
+    <input type="number" id="amount" placeholder="Amount" min="0" step="any">
+    <select id="unit">
+      <option value="oz">oz</option>
+      <option value="lb">lb</option>
+      <option value="kg">kg</option>
+      <option value="fl oz">fl oz</option>
+      <option value="ml">ml</option>
+      <option value="L">L</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <input type="number" id="costPerUnit" placeholder="Cost per unit (optional)" step="any">
+    <input type="text" id="comment" placeholder="Comment (optional)">
+    <button onclick="addTransfer()">Submit Transfer</button>
+  </div>
+
+  <h2>Logs</h2>
+  <div id="logContainer" class="inventory-logs">Loading...</div>
+  <button onclick="downloadMonthlyReport()">Download Monthly Report</button>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-    import { getDatabase, ref, push, onValue, set, update } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+    import { getDatabase, ref, push, set, onValue, update } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
       authDomain: "aidan-food-tracker.firebaseapp.com",
       projectId: "aidan-food-tracker",
-      storageBucket: "aidan-food-tracker.appspot.com",
+      storageBucket: "aidan-food-tracker.firebasestorage.app",
       messagingSenderId: "397728832351",
-      appId: "1:397728832351:web:33645f7f37ee1f277ff4ea",
-      databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com"
+      appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const locations = ["Prohibition", "Rebellion", "Sanctuary", "Forbidden"];
-    const units = ["oz", "lb", "kg", "fl oz", "ml", "L"];
+    function addTransfer() {
+      const date = document.getElementById('transferDate').value;
+      const from = document.getElementById('fromLocation').value;
+      const to = document.getElementById('toLocation').value;
+      const product = document.getElementById('productName').value;
+      const amount = parseFloat(document.getElementById('amount').value);
+      const unit = document.getElementById('unit').value;
+      const costPerUnit = parseFloat(document.getElementById('costPerUnit').value) || 0;
+      const comment = document.getElementById('comment').value.trim();
 
-    document.addEventListener("DOMContentLoaded", () => {
-      const form = document.getElementById("transferForm");
-      const logsContainer = document.getElementById("logs");
-      const reportBtn = document.getElementById("downloadReport");
-
-      // Populate location & unit dropdowns
-      locations.forEach(loc => {
-        const optionFrom = new Option(loc, loc);
-        const optionTo = new Option(loc, loc);
-        document.getElementById("from").append(optionFrom);
-        document.getElementById("to").append(optionTo);
-      });
-      units.forEach(u => document.getElementById("unit").append(new Option(u, u)));
-
-      // Cost per unit field handler
-      document.getElementById("unit").addEventListener("change", () => {
-        const unit = document.getElementById("unit").value;
-        document.getElementById("costLabel").innerText = `Cost per ${unit}`;
-        document.getElementById("costSection").style.display = "block";
-      });
-
-      form.addEventListener("submit", async e => {
-        e.preventDefault();
-        const data = {
-          date: document.getElementById("date").value,
-          from: document.getElementById("from").value,
-          to: document.getElementById("to").value,
-          product: document.getElementById("product").value.trim(),
-          amount: parseFloat(document.getElementById("amount").value),
-          unit: document.getElementById("unit").value,
-          costPerUnit: parseFloat(document.getElementById("costPerUnit").value) || 0,
-          comment: document.getElementById("comment").value.trim(),
-        };
-        data.totalCost = +(data.amount * data.costPerUnit).toFixed(2);
-
-        const month = data.date.slice(0, 7);
-
-        const fromRef = ref(db, `logs/${data.from}/${month}`);
-        const toRef = ref(db, `logs/${data.to}/${month}`);
-
-        const outLog = { ...data, amount: -Math.abs(data.amount), totalCost: -Math.abs(data.totalCost) };
-        const inLog = { ...data };
-
-        await push(fromRef, outLog);
-        await push(toRef, inLog);
-
-        form.reset();
-        document.getElementById("costSection").style.display = "none";
-        loadLogs();
-      });
-
-      async function loadLogs() {
-        logsContainer.innerHTML = "";
-        locations.forEach(location => {
-          const locDiv = document.createElement("div");
-          locDiv.innerHTML = `<details><summary><strong>${location}</strong></summary><div id="${location}-logs"></div></details>`;
-          logsContainer.appendChild(locDiv);
-
-          const locRef = ref(db, `logs/${location}`);
-          onValue(locRef, snapshot => {
-            const storeDiv = document.getElementById(`${location}-logs`);
-            storeDiv.innerHTML = "";
-            const data = snapshot.val();
-            if (!data) return;
-
-            Object.keys(data).forEach(month => {
-              const monthDiv = document.createElement("div");
-              monthDiv.innerHTML = `<h4>${month}</h4>`;
-              data[month] && Object.entries(data[month]).forEach(([id, entry]) => {
-                const row = document.createElement("div");
-                row.innerHTML = `
-                  <div style="margin: 5px 0; border: 1px solid #ccc; padding: 5px;">
-                    <input value="${entry.date}" />
-                    <input value="${entry.product}" />
-                    <input value="${entry.amount}" />
-                    <input value="${entry.unit}" />
-                    <input value="${entry.costPerUnit || 0}" />
-                    <input value="${entry.comment || ''}" />
-                    <button>💾</button>
-                  </div>
-                `;
-                const btn = row.querySelector("button");
-                btn.onclick = () => {
-                  const inputs = row.querySelectorAll("input");
-                  const updated = {
-                    date: inputs[0].value,
-                    product: inputs[1].value,
-                    amount: parseFloat(inputs[2].value),
-                    unit: inputs[3].value,
-                    costPerUnit: parseFloat(inputs[4].value) || 0,
-                    comment: inputs[5].value.trim(),
-                    from: entry.from,
-                    to: entry.to,
-                    totalCost: +(parseFloat(inputs[2].value) * (parseFloat(inputs[4].value) || 0)).toFixed(2)
-                  };
-                  const updateRef = ref(db, `logs/${location}/${month}/${id}`);
-                  set(updateRef, updated);
-                };
-                monthDiv.appendChild(row);
-              });
-              storeDiv.appendChild(monthDiv);
-            });
-          });
-        });
+      if (!date || !from || !to || !product || isNaN(amount) || from === to) {
+        alert("Please fill all required fields correctly.");
+        return;
       }
 
-      async function downloadReport() {
-        const snapshot = await import("https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js")
-          .then(({ getDatabase, ref, get }) => get(ref(db, 'logs')));
-        const data = (await snapshot.val()) || {};
+      const month = date.slice(0, 7);
+      const id = Date.now();
 
-        const wb = XLSX.utils.book_new();
-        Object.entries(data).forEach(([store, months]) => {
-          let rows = [["Date", "Product", "Amount", "Unit", "Cost per Unit", "Total Cost", "From", "To", "Comment"]];
-          Object.entries(months).forEach(([month, logs]) => {
-            Object.values(logs).forEach(log => {
+      const cost = parseFloat((amount * costPerUnit).toFixed(2));
+
+      const data = {
+        id,
+        date,
+        from,
+        to,
+        product,
+        amount,
+        unit,
+        costPerUnit: costPerUnit || null,
+        totalCost: costPerUnit ? cost : null,
+        comment: comment || ""
+      };
+
+      const fromRef = ref(db, `transfers/${from}/${month}/${id}`);
+      const toRef = ref(db, `transfers/${to}/${month}/${id}`);
+
+      set(fromRef, { ...data, direction: "out" });
+      set(toRef, { ...data, direction: "in" });
+
+      alert("Transfer submitted.");
+      loadLogs();
+    }
+
+    function createEditableField(key, value, isNumber = false) {
+      return `<input type="${isNumber ? 'number' : 'text'}" value="${value ?? ''}" data-key="${key}" style="margin-right: 5px;" ${isNumber ? 'step="any"' : ''}>`;
+    }
+
+    function loadLogs() {
+      const container = document.getElementById("logContainer");
+      container.innerHTML = "";
+
+      const logRef = ref(db, "transfers");
+      onValue(logRef, snapshot => {
+        const data = snapshot.val();
+        if (!data) {
+          container.textContent = "No logs available.";
+          return;
+        }
+
+        Object.entries(data).forEach(([location, months]) => {
+          const details = document.createElement("details");
+          details.innerHTML = `<summary><strong>${location}</strong></summary>`;
+
+          Object.entries(months).sort().forEach(([month, entries]) => {
+            const monthDiv = document.createElement("div");
+            monthDiv.innerHTML = `<div class="month-header">${month}</div>`;
+
+            Object.entries(entries).sort((a,b)=> a[1].date.localeCompare(b[1].date)).forEach(([id, entry]) => {
+              const div = document.createElement("div");
+              div.className = "log-entry " + (entry.direction === 'out' ? 'red' : 'green');
+
+              div.innerHTML = `
+                <div><strong>${entry.date}</strong></div>
+                <div>
+                  Product: ${createEditableField('product', entry.product)} 
+                  Amount: ${createEditableField('amount', entry.amount, true)} 
+                  Unit: ${createEditableField('unit', entry.unit)}<br>
+                  From: ${createEditableField('from', entry.from)} 
+                  To: ${createEditableField('to', entry.to)}<br>
+                  Cost/Unit: ${createEditableField('costPerUnit', entry.costPerUnit, true)} 
+                  Comment: ${createEditableField('comment', entry.comment)}
+                </div>
+                <button onclick="saveEdit('${location}', '${month}', '${id}', this)">Save</button>
+              `;
+              monthDiv.appendChild(div);
+            });
+
+            details.appendChild(monthDiv);
+          });
+
+          container.appendChild(details);
+        });
+      });
+    }
+
+    window.saveEdit = (location, month, id, btn) => {
+      const container = btn.parentElement;
+      const inputs = container.querySelectorAll('input');
+      const updated = {};
+
+      inputs.forEach(input => {
+        const key = input.dataset.key;
+        updated[key] = input.type === 'number' ? parseFloat(input.value) || 0 : input.value;
+      });
+
+      updated.totalCost = updated.costPerUnit ? parseFloat((updated.amount * updated.costPerUnit).toFixed(2)) : null;
+
+      const refPath = `transfers/${location}/${month}/${id}`;
+      update(ref(db, refPath), updated).then(() => alert("Transfer updated."));
+    };
+
+    function downloadMonthlyReport() {
+      const logRef = ref(db, "transfers");
+
+      onValue(logRef, snapshot => {
+        const data = snapshot.val();
+        if (!data) {
+          alert("No data to export.");
+          return;
+        }
+
+        const rows = [["Location", "Month", "Date", "From", "To", "Product", "Amount", "Unit", "Cost/Unit", "Total Cost", "Comment", "Direction"]];
+
+        Object.entries(data).forEach(([location, months]) => {
+          Object.entries(months).forEach(([month, entries]) => {
+            Object.values(entries).forEach(entry => {
               rows.push([
-                log.date, log.product, log.amount, log.unit,
-                log.costPerUnit || 0, log.totalCost || 0,
-                log.from, log.to, log.comment || ""
+                location, month, entry.date, entry.from, entry.to,
+                entry.product, entry.amount, entry.unit,
+                entry.costPerUnit ?? "", entry.totalCost ?? "", entry.comment ?? "", entry.direction
               ]);
             });
           });
-          const sheet = XLSX.utils.aoa_to_sheet(rows);
-          XLSX.utils.book_append_sheet(wb, sheet, store);
         });
 
-        XLSX.writeFile(wb, `Food_Transfers_${new Date().toISOString().slice(0,7)}.xlsx`);
-      }
+        const sheet = XLSX.utils.aoa_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, sheet, "Transfers");
+        XLSX.writeFile(wb, "Monthly_Transfers_Report.xlsx");
+      }, { onlyOnce: true });
+    }
 
-      reportBtn.onclick = downloadReport;
-      loadLogs();
-    });
+    window.addTransfer = addTransfer;
+    window.downloadMonthlyReport = downloadMonthlyReport;
+
+    window.addEventListener("DOMContentLoaded", loadLogs);
   </script>
-</head>
-<body>
-  <h1>Aidan Food Transfer Tracker</h1>
-  <form id="transferForm">
-    <label>Date: <input type="date" id="date" required /></label><br/>
-    <label>From: <select id="from"></select></label><br/>
-    <label>To: <select id="to"></select></label><br/>
-    <label>Product: <input type="text" id="product" required /></label><br/>
-    <label>Amount: <input type="number" step="0.01" id="amount" required /></label><br/>
-    <label>Unit: <select id="unit" required></select></label><br/>
-    <div id="costSection" style="display:none;">
-      <label id="costLabel">Cost per unit: <input type="number" step="0.01" id="costPerUnit" /></label><br/>
-    </div>
-    <label>Comment: <input type="text" id="comment" /></label><br/>
-    <button type="submit">Submit Transfer</button>
-  </form>
-  <br/>
-  <button id="downloadReport">Download Monthly Report</button>
-  <hr/>
-  <div id="logs"></div>
 </body>
 </html>
