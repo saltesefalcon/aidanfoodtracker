@@ -14,13 +14,22 @@
     import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
-      authDomain: "aidan-food-tracker.firebaseapp.com",
-      projectId: "aidan-food-tracker",
-      storageBucket: "aidan-food-tracker.appspot.com",
-      messagingSenderId: "397728832351",
-      appId: "1:397728832351:web:33645f7f37ee1f277ff4ea",
+const firebaseConfig = {
+
+  apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
+
+  authDomain: "aidan-food-tracker.firebaseapp.com",
+
+  databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com",
+
+  projectId: "aidan-food-tracker",
+
+  storageBucket: "aidan-food-tracker.firebasestorage.app",
+
+  messagingSenderId: "397728832351",
+
+  appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
+
       databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com"
     };
 
