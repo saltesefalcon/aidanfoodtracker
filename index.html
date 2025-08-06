@@ -14,16 +14,15 @@
     import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
-const firebaseConfig = {
-
-  	apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
-	authDomain: "aidan-food-tracker.firebaseapp.com",
-	databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com",
-	projectId: "aidan-food-tracker",
-	storageBucket: "aidan-food-tracker.firebasestorage.app",
-	messagingSenderId: "397728832351",
-	appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
-};
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
+      authDomain: "food-tracker-fd312.firebaseapp.com",
+      projectId: "food-tracker-fd312",
+      storageBucket: "food-tracker-fd312.firebasestorage.app",
+      messagingSenderId: "1012475913662",
+      appId: "1:1012475913662:web:81837595030d4b8a8105ef"
+    };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
@@ -34,6 +33,7 @@ const firebaseConfig = {
 
     function $(id) { return document.getElementById(id); }
 
+    // Initialize UI Elements for Locations and Units
     function setupUI() {
       locations.forEach(loc => {
         ["from", "to"].forEach(id => {
@@ -56,11 +56,13 @@ const firebaseConfig = {
       loadLogs(); // Load logs after UI setup
     }
 
+    // Update the Unit Label
     function updateUnitLabel() {
       $("unit-label").textContent = $("unit").value;
       updateTotalValue();
     }
 
+    // Update Total Value Calculation
     function updateTotalValue() {
       const amount = parseFloat($("amount").value);
       const cost = parseFloat($("cost").value);
@@ -72,6 +74,7 @@ const firebaseConfig = {
       }
     }
 
+    // Generate the Next Invoice Number
     async function getNextInvoiceNumber() {
       const counterRef = ref(db, "invoiceCounter");
       const snapshot = await get(counterRef);
@@ -81,7 +84,9 @@ const firebaseConfig = {
       return next;
     }
 
+    // Function to Submit Transfer to Firebase
     function addTransfer() {
+      console.log("Submit Transfer clicked!");  // Check if the function is triggered
       const date = $("date").value;
       const from = $("from").value;
       const to = $("to").value;
@@ -96,23 +101,35 @@ const firebaseConfig = {
         return;
       }
 
-      const monthKey = date.slice(0, 7);
+      const monthKey = date.slice(0, 7);  // This gives the year and month (e.g., "2025-08")
       const log = { date, from, to, product, amount, unit, costPerUnit, comment };
 
+      // Reference for storing the log data under the `logs/{from}/{month}` path
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
 
-      push(fromRef, log);
-      push(toRef, log);
+      push(fromRef, log).then(() => {
+        console.log("Data pushed to Firebase for 'from' location");
+      }).catch(error => {
+        console.error("Error pushing data for 'from' location:", error);
+      });
 
+      push(toRef, log).then(() => {
+        console.log("Data pushed to Firebase for 'to' location");
+      }).catch(error => {
+        console.error("Error pushing data for 'to' location:", error);
+      });
+
+      // Clear the input fields after submission
       ["product", "amount", "cost", "comment"].forEach(id => $(id).value = "");
       $("unit").selectedIndex = 0;
       updateUnitLabel();
       $("total-value").textContent = "";
 
-      loadLogs();
+      loadLogs();  // Refresh the logs
     }
 
+    // Create HTML Entry for Each Log Entry
     function createLogEntryHTML(store, month, id, log) {
       const div = document.createElement("div");
       div.className = "log-entry";
@@ -136,6 +153,7 @@ const firebaseConfig = {
       return div;
     }
 
+    // Create Invoice for a Log Entry
     window.createInvoice = async function(store, month, id) {
       const logRef = ref(db, `logs/${store}/${month}/${id}`);
       const snapshot = await get(logRef);
@@ -195,6 +213,7 @@ const firebaseConfig = {
       `);
     };
 
+    // Send Invoice via EmailJS
     window.sendInvoice = function({ log, invoiceNumber, pdfDataUri }, button) {
       const emailAddresses = {
         "Prohibition": "accounts@prohibitionsocialhouse.com",
@@ -231,40 +250,7 @@ const firebaseConfig = {
       });
     };
 
-    window.editLog = function(store, month, id, btn) {
-      const logRef = ref(db, `logs/${store}/${month}/${id}`);
-      get(logRef).then(snapshot => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        const parent = btn.parentElement;
-        parent.innerHTML = `
-          <input value="${data.date}" id="edit-date" type="date">
-          <input value="${data.product}" id="edit-product" placeholder="Product">
-          <input value="${data.amount}" id="edit-amount" type="number">
-          <select id="edit-unit">${units.map(u => `<option ${u === data.unit ? "selected" : ""}>${u}</option>`)}</select>
-          <input value="${data.costPerUnit || ""}" id="edit-cost" type="number" placeholder="Cost/unit">
-          <input value="${data.comment || ""}" id="edit-comment" placeholder="Comment">
-          <button onclick="saveEdit('${store}', '${month}', '${id}', this)">Save</button>
-        `;
-      });
-    }
-
-    window.saveEdit = function(store, month, id, btn) {
-      const updated = {
-        date: $("edit-date").value,
-        product: $("edit-product").value,
-        amount: parseFloat($("edit-amount").value),
-        unit: $("edit-unit").value,
-        costPerUnit: parseFloat($("edit-cost").value) || null,
-        comment: $("edit-comment").value || ""
-      };
-      update(ref(db, `logs/${store}/${month}/${id}`), updated).then(() => {
-        alert("Edit saved!");
-        loadLogs();
-      });
-    }
-
+    // Load Logs from Firebase Realtime Database
     window.loadLogs = function() {
       $("logs").innerHTML = "";
       $("current-month").textContent = selectedMonth;
@@ -283,6 +269,15 @@ const firebaseConfig = {
       });
     }
 
+    // Change Month in Logs
+    window.changeMonth = function(offset) {
+      const [year, month] = selectedMonth.split("-").map(Number);
+      const newDate = new Date(year, month - 1 + offset);
+      selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+      loadLogs();
+    }
+
+    // Export Logs to Excel
     window.exportExcel = function() {
       const dbRef = ref(db, "logs");
       get(dbRef).then(snapshot => {
@@ -318,13 +313,7 @@ const firebaseConfig = {
       });
     }
 
-    window.changeMonth = function(offset) {
-      const [year, month] = selectedMonth.split("-").map(Number);
-      const newDate = new Date(year, month - 1 + offset);
-      selectedMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
-      loadLogs();
-    }
-
+    // Initialize the App
     window.onload = () => {
       setupUI();
       $("date").valueAsDate = new Date();
@@ -375,32 +364,12 @@ const firebaseConfig = {
       margin-bottom: 10px;
     }
 
-    @media (min-width: 600px) {
-      .form-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-
-      input, select {
-        width: auto;
-        flex: 1;
-      }
-
-      label {
-        display: inline-block;
-        width: auto;
-        margin-top: 0;
-      }
-    }
-
     button {
       background: #007bff;
       color: white;
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      transition: background-color 0.3s ease;
     }
 
     button:hover {
@@ -436,16 +405,12 @@ const firebaseConfig = {
 
   <button onclick="addTransfer()">Submit Transfer</button>
 
-  <h2>
-    Logs for 
-    <button onclick="changeMonth(-1)">&lt;</button>
-    <span id="current-month"></span>
-    <button onclick="changeMonth(1)">&gt;</button>
-  </h2>
+  <h2>Logs for <button onclick="changeMonth(-1)">&lt;</button> <span id="current-month"></span> <button onclick="changeMonth(1)">&gt;</button></h2>
 
   <div id="logs"></div>
 
   <button onclick="exportExcel()">Download Monthly Report</button>
 </body>
 </html>
+
 
