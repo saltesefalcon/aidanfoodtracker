@@ -104,8 +104,11 @@
       const monthKey = date.slice(0, 7);
       const log = { date, from, to, product, amount, unit, costPerUnit, comment };
 
+       // Log the data being pushed to Firebase
+      console.log("Data being pushed to Firebase:", log);
+
       // Log path and pushing to Firebase
-      console.log(`Pushing to: logs/${from}/${monthKey}`);
+      console.log(`Pushing data to: logs/${from}/${monthKey}`);
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
 
