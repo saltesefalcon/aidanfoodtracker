@@ -14,16 +14,15 @@
     import { getDatabase, ref, push, update, get } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
     import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
-const firebaseConfig = {
-
-  	apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
-	authDomain: "aidan-food-tracker.firebaseapp.com",
-	databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com",
-	projectId: "aidan-food-tracker",
-	storageBucket: "aidan-food-tracker.firebasestorage.app",
-	messagingSenderId: "397728832351",
-	appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
-};
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
+      authDomain: "aidan-food-tracker.firebaseapp.com",
+      databaseURL: "https://aidan-food-tracker-default-rtdb.firebaseio.com",
+      projectId: "aidan-food-tracker",
+      storageBucket: "aidan-food-tracker.firebasestorage.app",
+      messagingSenderId: "397728832351",
+      appId: "1:397728832351:web:33645f7f37ee1f277ff4ea"
+    };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
@@ -91,6 +90,10 @@ const firebaseConfig = {
       const costPerUnit = parseFloat($("cost").value) || null;
       const comment = $("comment").value || "";
 
+      // Debugging logs to inspect form values
+      console.log({ date, from, to, product, amount, unit, costPerUnit, comment });
+
+      // Validation check
       if (!date || !from || !to || !product || isNaN(amount) || !unit || from === to) {
         alert("Please complete all required fields and make sure 'from' and 'to' are different.");
         return;
@@ -99,18 +102,32 @@ const firebaseConfig = {
       const monthKey = date.slice(0, 7);
       const log = { date, from, to, product, amount, unit, costPerUnit, comment };
 
+      // Push data to Firebase and log success or failure
       const fromRef = ref(db, `logs/${from}/${monthKey}`);
       const toRef = ref(db, `logs/${to}/${monthKey}`);
 
-      push(fromRef, log);
-      push(toRef, log);
+      push(fromRef, log)
+        .then(() => {
+          console.log("Transfer added successfully to 'from' store.");
+        })
+        .catch((error) => {
+          console.error("Error adding transfer to 'from' store:", error);
+        });
+
+      push(toRef, log)
+        .then(() => {
+          console.log("Transfer added successfully to 'to' store.");
+        })
+        .catch((error) => {
+          console.error("Error adding transfer to 'to' store:", error);
+        });
 
       ["product", "amount", "cost", "comment"].forEach(id => $(id).value = "");
       $("unit").selectedIndex = 0;
       updateUnitLabel();
       $("total-value").textContent = "";
 
-      loadLogs();
+      loadLogs(); // Reload logs after adding transfer
     }
 
     function createLogEntryHTML(store, month, id, log) {
@@ -448,3 +465,4 @@ const firebaseConfig = {
   <button onclick="exportExcel()">Download Monthly Report</button>
 </body>
 </html>
+
