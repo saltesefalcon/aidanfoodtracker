@@ -51,24 +51,17 @@
   <div id="logs"></div>
   <button onclick="exportExcel()">Download Monthly Report</button>
 
-  <!-- jsPDF for PDF generation -->
+  <!-- 3rd-party libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <!-- EmailJS for sending emails -->
-  <script src="https://cdn.emailjs.com/sdk/2.3.2/email.min.js"></script>
-  <!-- Our main logic as an ES module -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-    import {
-      getDatabase,
-      ref,
-      push,
-      set,
-      update,
-      get
-    } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
-    import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js"></script>
+  <script src="https://cdn.emailjs.com/sdk/3.2.0/email.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.full.min.js"></script>
 
-    // --- Configuration & State ---
+  <!-- Main app logic -->
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
+    // --- Firebase init ---
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -78,16 +71,39 @@
       messagingSenderId: "1012475913662",
       appId: "1:1012475913662:web:81837595030d4b8a8105ef"
     };
-    const app = initializeApp(firebaseConfig);
-    const db  = getDatabase(app);
+    const app = firebase.initializeApp(firebaseConfig);
+    const db  = firebase.database();
 
+    // --- State ---
     const locations = ["Prohibition","Tulia Osteria","Ce Soir","Beacon"];
     const units     = ["oz","lb","kg","fl oz","ml","L"];
     let selectedMonth = new Date().toISOString().slice(0,7);
 
-    function $(id){return document.getElementById(id);}
+    function $(id){ return document.getElementById(id); }
 
-    // --- UI Helpers ---
+    // --- UI setup ---
+    function setupUI(){
+      locations.forEach(loc=>{
+        ["from","to"].forEach(sel=>{
+          const o = document.createElement("option");
+          o.value = o.textContent = loc;
+          $(sel).appendChild(o);
+        });
+      });
+      units.forEach(u=>{
+        const o = document.createElement("option");
+        o.value = o.textContent = u;
+        $("unit").appendChild(o);
+      });
+
+      $("unit").addEventListener("change", updateUnitLabel);
+      $("amount").addEventListener("input", updateTotalValue);
+      $("cost").addEventListener("input", updateTotalValue);
+
+      emailjs.init("53xKou9OzR6BhrdWL");
+      loadLogs();
+    }
+
     function updateUnitLabel(){
       $("unit-label").textContent = $("unit").value;
       updateTotalValue();
@@ -96,62 +112,52 @@
       const a=parseFloat($("amount").value),
             c=parseFloat($("cost").value);
       $("total-value").textContent = (!isNaN(a)&&!isNaN(c))
-        ? `Total Value: $${(a*c).toFixed(2)}`
-        : "";
+        ? `Total Value: $${(a*c).toFixed(2)}` : "";
     }
 
     async function getNextInvoiceNumber(){
-      const snap = await get(ref(db,"invoiceCounter"));
+      const snap = await db.ref("invoiceCounter").get();
       const cur  = snap.exists()?snap.val():1000;
       const next = cur+1;
-      await update(ref(db),{invoiceCounter:next});
+      await db.ref().update({invoiceCounter:next});
       return next;
     }
 
-    // --- Setup & Load Logs ---
-    async function setupUI(){
-      // populate FROM/TO
-      locations.forEach(loc=>{
-        ["from","to"].forEach(sel=>{
-          const o=document.createElement("option");
-          o.value=o.textContent=loc;
-          $(sel).appendChild(o);
-        });
-      });
-      // populate units
-      units.forEach(u=>{
-        const o=document.createElement("option");
-        o.value=o.textContent=u;
-        $("unit").appendChild(o);
-      });
-      // live label & total
-      $("unit").addEventListener("change",updateUnitLabel);
-      $("amount").addEventListener("input",updateTotalValue);
-      $("cost").addEventListener("input",updateTotalValue);
-      // init EmailJS
-      emailjs.init("53xKou9OzR6BhrdWL");
-      loadLogs();
-    }
+    // --- Add Transfer ---
+    window.addTransfer = async function(){
+      const date  = $("date").value,
+            from  = $("from").value,
+            to    = $("to").value,
+            product = $("product").value,
+            amount  = parseFloat($("amount").value),
+            unit    = $("unit").value,
+            costPerUnit = parseFloat($("cost").value)||null,
+            comment     = $("comment").value||"";
 
-    async function loadLogs(){
-      $("logs").innerHTML = "";
-      $("current-month").textContent = selectedMonth;
-      for(const store of locations){
-        const sec=document.createElement("div");
-        sec.innerHTML=`<h3>${store}</h3>`;
-        const snap = await get(ref(db,`logs/${store}/${selectedMonth}`));
-        snap.forEach(child=>{
-          sec.appendChild(createLogEntryHTML(store,selectedMonth,child.key,child.val()));
-        });
-        $("logs").appendChild(sec);
+      if(!date||!from||!to||!product||isNaN(amount)||!unit||from===to){
+        alert("Complete all fields and ensure 'from' ≠ 'to'.");
+        return;
       }
-    }
+      const monthKey = date.slice(0,7),
+            log      = {date,from,to,product,amount,unit,costPerUnit,comment},
+            key      = db.ref(`logs/${from}/${monthKey}`).push().key;
 
+      const upd = {};
+      upd[`logs/${from}/${monthKey}/${key}`] = log;
+      upd[`logs/${to  }/${monthKey}/${key}`] = log;
+      await db.ref().update(upd);
+
+      ["product","amount","cost","comment"].forEach(id=>$(id).value="");
+      $("unit").selectedIndex=0; updateUnitLabel();
+      loadLogs();
+    };
+
+    // --- Render log entry ---
     function createLogEntryHTML(store,month,key,log){
       const div=document.createElement("div");
       div.className="log-entry";
-      const costTxt = log.costPerUnit?` @ $${log.costPerUnit.toFixed(2)} each`:"",
-            totalTxt= log.costPerUnit?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"",
+      const costTxt = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "",
+            totalTxt= log.costPerUnit ? ` = $${(log.amount*log.costPerUnit).toFixed(2)}` : "",
             isOut   = log.from===store,
             sign    = isOut?"-":"+",
             color   = isOut?"red":"green";
@@ -166,54 +172,38 @@
       return div;
     }
 
-    // --- Add Transfer ---
-    async function addTransfer(){
-      const date  = $("date").value,
-            from  = $("from").value,
-            to    = $("to").value,
-            product = $("product").value,
-            amount  = parseFloat($("amount").value),
-            unit    = $("unit").value,
-            costPerUnit = parseFloat($("cost").value)||null,
-            comment     = $("comment").value||"";
-
-      if(!date||!from||!to||!product||isNaN(amount)||!unit||from===to){
-        alert("Complete all fields and ensure 'from'≠'to'.");
-        return;
+    // --- Load logs ---
+    async function loadLogs(){
+      $("logs").innerHTML = "";
+      $("current-month").textContent = selectedMonth;
+      for(const store of locations){
+        const section = document.createElement("div");
+        section.innerHTML = `<h3>${store}</h3>`;
+        const snap = await db.ref(`logs/${store}/${selectedMonth}`).get();
+        snap.forEach(child=>{
+          section.appendChild(createLogEntryHTML(store,selectedMonth,child.key,child.val()));
+        });
+        $("logs").appendChild(section);
       }
-      const monthKey = date.slice(0,7),
-            log      = {date,from,to,product,amount,unit,costPerUnit,comment},
-            key      = push(ref(db,`logs/${from}/${monthKey}`)).key;
-
-      const updates={};
-      updates[`logs/${from}/${monthKey}/${key}`] = log;
-      updates[`logs/${to  }/${monthKey}/${key}`] = log;
-      await update(ref(db),updates);
-
-      // clear
-      ["product","amount","cost","comment"].forEach(id=>$(id).value="");
-      $("unit").selectedIndex=0; updateUnitLabel();
-
-      loadLogs();
     }
 
-    // --- Edit & Save ---
-    async function editLog(store,month,key,btn){
-      const snap = await get(ref(db,`logs/${store}/${month}/${key}`));
+    // --- Edit + Save ---
+    window.editLog = async function(store,month,key,btn){
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).get();
       const data = snap.val();
-      if(!data) return alert("Not found");
-      const p=btn.parentElement;
+      if(!data) return alert("Log not found");
+      const p = btn.parentElement;
       p.innerHTML=`
-        <input id="e-date"  type="date"   value="${data.date}">
-        <input id="e-prod"  placeholder="Product" value="${data.product}">
-        <input id="e-amt"   type="number" value="${data.amount}">
+        <input id="e-date" type="date" value="${data.date}">
+        <input id="e-prod" placeholder="Product" value="${data.product}">
+        <input id="e-amt"  type="number" value="${data.amount}">
         <select id="e-unit">${units.map(u=>`<option${u===data.unit?" selected":""}>${u}</option>`).join("")}</select>
-        <input id="e-cost"  type="number" placeholder="Cost/unit" value="${data.costPerUnit||""}">
-        <input id="e-cmnt"  placeholder="Comment" value="${data.comment||""}">
+        <input id="e-cost" type="number" placeholder="Cost/unit" value="${data.costPerUnit||""}">
+        <input id="e-cmnt" placeholder="Comment" value="${data.comment||""}">
         <button onclick="saveEdit('${data.from}','${data.to}','${month}','${key}')">Save</button>
       `;
-    }
-    async function saveEdit(from,to,month,key){
+    };
+    window.saveEdit = async function(from,to,month,key){
       const upd = {
         date:        $("e-date").value,
         product:     $("e-prod").value,
@@ -225,17 +215,20 @@
       const u={};
       u[`logs/${from}/${month}/${key}`] = upd;
       u[`logs/${to  }/${month}/${key}`] = upd;
-      await update(ref(db),u);
+      await db.ref().update(u);
       loadLogs();
-    }
+    };
 
-    // --- Invoice & Send ---
-    window.createInvoice = async(store,month,key)=>{
-      const snap = await get(ref(db,`logs/${store}/${month}/${key}`));
+    // --- Invoice & Email ---
+    window.createInvoice = async function(store,month,key){
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).get();
       const log  = snap.val(); if(!log) return alert("Not found");
       const inv  = await getNextInvoiceNumber();
-      const {jsPDF}=window.jspdf, doc=new jsPDF();
-      const isOut = log.from===store, sign=isOut?"-":"+", total=log.costPerUnit?(log.amount*log.costPerUnit).toFixed(2):"N/A";
+      const {jsPDF} = window.jspdf;
+      const doc = new jsPDF();
+      const isOut = log.from===store,
+            sign  = isOut?"-":"+",
+            total = log.costPerUnit ? (log.amount*log.costPerUnit).toFixed(2) : "N/A";
 
       doc.setFontSize(16); doc.text(`Invoice #${inv}`,20,20);
       doc.setFontSize(12);
@@ -248,7 +241,8 @@
       doc.text(`Total: $${total}`,20,90);
       doc.text(`Direction: ${isOut?"Outgoing":"Incoming"}`,20,100);
 
-      const uri=doc.output("datauristring"), win=window.open("","_blank");
+      const uri = doc.output("datauristring"),
+            win = window.open("","_blank");
       win.document.write(`
         <html><head><title>Invoice</title>
         <style>
@@ -266,58 +260,54 @@
         </div></body></html>
       `);
     };
-    window.sendInvoice = ({log,inv},btn)=>{
+    window.sendInvoice = function({log,inv},btn){
       emailjs.send('service_gnviol9','template_6d3c34k',{
         invoice_number:inv,
         date:log.date,
         from:log.from,
         to:log.to
       }).then(_=>{
-        alert("Sent!");
-        btn.disabled=true;
+        alert("Invoice sent!");
+        btn.disabled = true;
       }).catch(e=>{
         console.error(e);
-        alert("Failed");
+        alert("Send failed");
       });
     };
 
-    // --- Nav & Export ---
-    window.changeMonth = offset=>{
-      const [y,m]=selectedMonth.split("-").map(n=>+n),
-            d=new Date(y,m-1+offset);
-      selectedMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    // --- Navigation & Export ---
+    window.changeMonth = function(offset){
+      const [y,m] = selectedMonth.split("-").map(n=>+n),
+            d = new Date(y,m-1+offset);
+      selectedMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
       loadLogs();
     };
-    window.exportExcel = ()=>{
-      get(ref(db,"logs")).then(snap=>{
-        const wb=XLSX.utils.book_new();
+    window.exportExcel = function(){
+      db.ref("logs").get().then(snap=>{
+        const wb = XLSX.utils.book_new();
         snap.forEach(storeSnap=>{
-          const name=storeSnap.key, rows=[];
+          const name = storeSnap.key, rows=[];
           storeSnap.forEach(monthSnap=>{
             monthSnap.forEach(ls=>{
-              const l=ls.val(), amt=l.from===name?-l.amount:l.amount;
+              const l=ls.val(), amt = l.from===name?-l.amount:l.amount;
               rows.push([l.date,l.from,l.to,l.product,amt,l.unit,l.costPerUnit||"",amt*(l.costPerUnit||0)||"",l.comment||""]);
             });
           });
-          const ws=XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost/Unit","Total","Comment"],...rows]);
+          const ws = XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost/Unit","Total","Comment"],...rows]);
           XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));
         });
         XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`);
       });
     };
 
-    // --- Bootstrap ---
-    document.addEventListener("DOMContentLoaded",()=>{
-      setupUI();
-      $("date").valueAsDate = new Date();
-    });
-
-    // Expose addTransfer for inline onclick
-    window.addTransfer = addTransfer;
-  })();
+    // --- Bootstrap UI ---
+    setupUI();
+    $("date").valueAsDate = new Date();
+  });
   </script>
 </body>
 </html>
+
 
 
 
