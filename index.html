@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9; }
@@ -29,6 +29,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="header">
     <h1>Food Transfer Tracker</h1>
@@ -63,7 +64,7 @@
   <div id="logs"></div>
   <button class="main admin-only" onclick="exportExcel()">Download Monthly Report</button>
 
-  <!-- Libraries -->
+  <!-- External libs -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
@@ -72,14 +73,14 @@
 
   <script>
     // ——— CONFIG ———
-    const ADMIN_PASSWORD = "SuperSecret123";
-    const EMAILJS_PUBLIC_KEY = "53xKou9OzR6BhrdWL";      // your EmailJS public key
+    const ADMIN_PASSWORD    = "SuperSecret123";  
+    const EMAILJS_PUBLIC    = "53xKou9OzR6BhrdWL";
     const EMAILJS_SERVICE   = "service_gnviol9";
     const EMAILJS_TEMPLATE  = "template_6d3c34k";
-    emailjs.init(EMAILJS_PUBLIC_KEY);
+    emailjs.init(EMAILJS_PUBLIC);
     // ——————————
 
-    // Firebase setup
+    // Firebase init
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -105,7 +106,7 @@
 
     function $(id){ return document.getElementById(id); }
 
-    // Admin login state
+    // Admin login handling
     function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
     function setAdmin(on){
       localStorage.setItem("isAdmin", on?"true":"false");
@@ -122,9 +123,8 @@
       else alert("Incorrect password.");
     });
 
-    // Populate UI on load
+    // Populate selects & listeners
     async function setupUI(){
-      // Fill From/To
       locations.forEach(loc=>{
         ["from","to"].forEach(id=>{
           const o=document.createElement("option");
@@ -132,24 +132,20 @@
           $(id).appendChild(o);
         });
       });
-      // Fill Unit select
       units.forEach(u=>{
         const o=document.createElement("option");
         o.value=o.textContent=u;
         $("unit").appendChild(o);
       });
-      // Inputs trigger total-value calc
       ["unit","amount","cost"].forEach(id=>
-        $(id).addEventListener("input", updateTotalValue)
+        $(id).addEventListener("input", updateTotal)
       );
-      // Default date
       $("date").valueAsDate = new Date();
-      // Restore admin state & load logs
       setAdmin(isAdmin());
       await loadLogs();
     }
 
-    function updateTotalValue(){
+    function updateTotal(){
       $("unit-label").textContent = $("unit").value;
       const a=parseFloat($("amount").value),
             c=parseFloat($("cost").value);
@@ -157,30 +153,27 @@
         ? `Total Value: $${(a*c).toFixed(2)}` : "";
     }
 
-    async function getNextInvoiceNumber(){
+    async function getNextInvoice(){
       const snap = await db.ref("invoiceCounter").once("value");
-      const cur  = snap.exists() ? snap.val() : 1000;
-      const nxt  = cur + 1;
-      await db.ref().update({ invoiceCounter: nxt });
+      const cur  = snap.exists()?snap.val():1000;
+      const nxt  = cur+1;
+      await db.ref().update({invoiceCounter:nxt});
       return nxt;
     }
 
-    function renderLogEntry(store,month,key,log){
-      const div = document.createElement("div");
-      div.className = log.completed ? "log-entry completed" : "log-entry";
-      div.dataset.store = store;
-      div.dataset.month = month;
-      div.dataset.key   = key;
-
-      const costTxt  = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
-      const totalTxt = log.costPerUnit ? ` = $${(log.amount*log.costPerUnit).toFixed(2)}` : "";
-      const color    = log.amount<0 ? "red" : "green";
-      const display  = log.amount<0 ? log.amount : "+"+log.amount;
-
-      let html = `
-        <span style="color:${color}; font-size:0.95rem">
-          ${display} ${log.unit} of ${log.product}${costTxt}${totalTxt}
-          (${log.date}${log.comment?` | ${log.comment}`:""})
+    function renderLog(store,month,key,log){
+      const div=document.createElement("div");
+      div.className=log.completed?"log-entry completed":"log-entry";
+      div.dataset.store=store;
+      div.dataset.month=month;
+      div.dataset.key=key;
+      const costTxt  = log.costPerUnit?` @ $${log.costPerUnit.toFixed(2)} each`:"";
+      const totalTxt = log.costPerUnit?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"";
+      const color    = log.amount<0?"red":"green";
+      const disp     = log.amount<0?log.amount:"+"+log.amount;
+      let html=`
+        <span style="color:${color};font-size:0.95rem">
+          ${disp} ${log.unit} of ${log.product}${costTxt}${totalTxt} (${log.date})
         </span><br>
       `;
       if(isAdmin() && !log.completed){
@@ -194,21 +187,21 @@
       if(log.completed){
         html+=`<div class="completed-label">Completed</div>`;
       }
-      div.innerHTML = html;
+      div.innerHTML=html;
       return div;
     }
 
     async function loadLogs(){
       $("logs").innerHTML="";
       $("current-month").textContent=selectedMonth;
-      for(const store of locations){
-        const section = document.createElement("div");
-        section.innerHTML = `<h3>${store}</h3>`;
-        const snap = await db.ref(`logs/${store}/${selectedMonth}`).once("value");
-        const data = snap.val();
+      for(const s of locations){
+        const section=document.createElement("div");
+        section.innerHTML=`<h3>${s}</h3>`;
+        const snap=await db.ref(`logs/${s}/${selectedMonth}`).once("value`);
+        const data=snap.val();
         if(data){
-          Object.entries(data).forEach(([key,log])=>{
-            section.appendChild(renderLogEntry(store,selectedMonth,key,log));
+          Object.entries(data).forEach(([k,l])=>{
+            section.appendChild(renderLog(s,selectedMonth,k,l));
           });
         }
         $("logs").appendChild(section);
@@ -216,78 +209,65 @@
     }
 
     async function addTransfer(){
-      const date    = $("date").value;
-      const from    = $("from").value;
-      const to      = $("to").value;
-      const product = $("product").value.trim();
-      const amt     = parseFloat($("amount").value);
-      const unit    = $("unit").value;
-      const cpu     = parseFloat($("cost").value)||0;
-      const cmnt    = $("comment").value.trim();
-      if(!date||!from||!to||!product||isNaN(amt)||!unit||from===to){
-        return alert("Complete all fields and ensure From ≠ To.");
+      const date    = $("date").value,
+            from    = $("from").value,
+            to      = $("to").value,
+            prod    = $("product").value.trim(),
+            amt     = parseFloat($("amount").value),
+            unit    = $("unit").value,
+            cpu     = parseFloat($("cost").value)||0,
+            cmnt    = $("comment").value.trim();
+      if(!date||!from||!to||!prod||isNaN(amt)||from===to){
+        return alert("Complete all fields and make From≠To.");
       }
-      const monthKey = date.slice(0,7);
-      const key = db.ref("logs").push().key;
-      const outLog = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount:-amt };
-      const inLog  = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount: amt };
-      const updates = {};
-      updates[`logs/${from}/${monthKey}/${key}`] = outLog;
-      updates[`logs/${to}/${monthKey}/${key}`]   = inLog;
-      try {
-        await db.ref().update(updates);
-      } catch(e){
-        console.error(e);
-        return alert("Failed to log transfer.");
-      }
-      // Reset form
-      $("product").value = "";
-      $("amount").value  = "";
-      $("cost").value    = "";
-      $("comment").value = "";
-      $("unit").selectedIndex = 0;
-      updateTotalValue();
+      const mk  = date.slice(0,7),
+            key = db.ref("logs").push().key,
+            out = {date,from,to,product:prod,unit,costPerUnit:cpu,comment:cmnt,completed:false,amount:-amt},
+            inl = {...out,amount:amt},
+            upd = {};
+      upd[`logs/${from}/${mk}/${key}`]=out;
+      upd[`logs/${to}/${mk}/${key}`]=inl;
+      try{ await db.ref().update(upd); }
+      catch(e){ console.error(e); return alert("Log failed."); }
+      ["product","amount","cost","comment"].forEach(i=>$(i).value="");
+      $("unit").selectedIndex=0; updateTotal();
       await loadLogs();
     }
 
     async function editLog(store,month,key,btn){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value`);
-      const d    = snap.val(); if(!d) return alert("Not found.");
-      const p    = btn.parentElement;
-      p.innerHTML = `
-        <input id="e-date"  type="date"       value="${d.date}"/>
-        <input id="e-prod"  placeholder="Product" value="${d.product}"/>
-        <input id="e-amt"   type="number"     value="${Math.abs(d.amount)}"/>
-        <select id="e-unit">${units.map(u=>`<option${u===d.unit?" selected":""}>${u}</option>`).join("")}</select>
-        <input id="e-cost"  placeholder="Cost/unit" value="${d.costPerUnit||0}"/>
-        <input id="e-cmnt"  placeholder="Comment" value="${d.comment||""}"/>
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value`);
+      const d=snap.val(); if(!d) return alert("Not found.");
+      const p=btn.parentElement;
+      p.innerHTML=`
+        <input id="e-date" type="date" value="${d.date}"/>
+        <input id="e-prod" placeholder="Product" value="${d.product}"/>
+        <input id="e-amt"  type="number" value="${Math.abs(d.amount)}"/>
+        <select id="e-unit">${units.map(u=>
+          `<option${u===d.unit?" selected":""}>${u}</option>`
+        ).join("")}</select>
+        <input id="e-cost" placeholder="Cost/unit" value="${d.costPerUnit}"/>
+        <input id="e-cmnt" placeholder="Comment" value="${d.comment}"/>
         <button onclick="saveEdit('${d.from}','${d.to}','${month}','${key}')">Save</button>
       `;
     }
 
     async function saveEdit(from,to,month,key){
-      const dv = $("e-date").value;
-      const pv = $("e-prod").value.trim();
-      const av = parseFloat($("e-amt").value);
-      const uv = $("e-unit").value;
-      const cv = parseFloat($("e-cost").value)||0;
-      const cm = $("e-cmnt").value.trim();
-      const outLog = { date:dv, from, to, product:pv, unit:uv, costPerUnit:cv, comment:cm, completed:false, amount:-av };
-      const inLog  = { ...outLog, amount: av };
-      const upd    = {};
-      upd[`logs/${from}/${month}/${key}`] = outLog;
-      upd[`logs/${to}/${month}/${key}`]   = inLog;
+      const dv=$("e-date").value, pv=$("e-prod").value.trim(),
+            av=parseFloat($("e-amt").value), uv=$("e-unit").value,
+            cv=parseFloat($("e-cost").value)||0, cm=$("e-cmnt").value.trim();
+      const out={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount:-av},
+            inl={...out,amount:av}, upd={};
+      upd[`logs/${from}/${month}/${key}`]=out;
+      upd[`logs/${to}/${month}/${key}`]=inl;
       await db.ref().update(upd);
       await loadLogs();
     }
 
     async function openInvoice(store,month,key){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value`);
-      const log  = snap.val(); if(!log) return alert("Not found.");
-      const inv  = await getNextInvoiceNumber();
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const amt = log.amount, sign = amt<0?"-":"+", tot = log.costPerUnit?(amt*log.costPerUnit).toFixed(2):"0.00";
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value`);
+      const log=snap.val(); if(!log) return alert("Not found.");
+      const inv=await getNextInvoice(), {jsPDF} = window.jspdf, doc=new jsPDF();
+      const amt=log.amount, sign=amt<0?"-":"+", tot=log.costPerUnit?(amt*log.costPerUnit).toFixed(2):"0.00";
       doc.setFontSize(16).text(`Invoice #${inv}`,20,20);
       doc.setFontSize(12);
       doc.text(`From: ${log.from}`,20,30);
@@ -295,100 +275,77 @@
       doc.text(`Date: ${log.date}`,20,50);
       doc.text(`Product: ${log.product}`,20,60);
       doc.text(`Amount: ${sign}${Math.abs(amt)} ${log.unit}`,20,70);
-      doc.text(`Cost per unit: $${log.costPerUnit||"0.00"}`,20,80);
+      doc.text(`Cost/unit: $${log.costPerUnit}`,20,80);
       doc.text(`Total: $${tot}`,20,90);
       doc.text(`Direction: ${amt<0?"Outgoing":"Incoming"}`,20,100);
       if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
-      const pdfDataUri = doc.output("datauristring");
-      const win = window.open("");
+      const uri=doc.output("datauristring"), win=window.open("");
       win.document.write(`
-        <html><head><title>Invoice Preview</title><style>
+        <html><head><title>Invoice</title><style>
         body{margin:0;font-family:Arial;}iframe{width:100%;height:90vh;border:none;}
         .buttons{display:flex;justify-content:space-around;padding:10px;background:#f0f0f0;}
         button{padding:10px 20px;border:none;border-radius:5px;cursor:pointer;}
-        .send{background:green;color:#fff;} .cancel{background:red;color:#fff;}
+        .cancel{background:red;color:#fff;} .send{background:green;color:#fff;}
         button:active{transform:scale(.98);}
         </style></head><body>
-          <iframe src="${pdfDataUri}"></iframe>
+          <iframe src="${uri}"></iframe>
           <div class="buttons">
             <button class="cancel" onclick="window.close()">Cancel</button>
             <button class="send" onclick="
-              window.opener.sendInvoice('${store}','${month}','${key}',${inv},'${pdfDataUri}');
-              window.close();
+              window.opener.sendInvoice('${store}','${month}','${key}',${inv});window.close();
             ">Send Invoice</button>
           </div>
         </body></html>
       `);
     }
 
-    async function sendInvoice(store,month,key,inv,pdfDataUri){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value`);
-      const log  = snap.val(); if(!log) return alert("Not found.");
-      // strip data URI prefix
-      const b64 = pdfDataUri.split(',')[1];
-      // build common params
-      const common = {
+    async function sendInvoice(store,month,key,inv){
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value`);
+      const log=snap.val(); if(!log) return alert("Not found.");
+      const baseParams = {
         invoice_number: inv,
         date:           log.date,
         from_location:  log.from,
         to_location:    log.to
       };
-      // first email: to the “from” location
-      const to1 = emailAddresses[log.from];
-      // second email: to the “to” location
-      const to2 = emailAddresses[log.to];
-
-      try {
-        // send to-from
-        await emailjs.send(
-          EMAILJS_SERVICE,
-          EMAILJS_TEMPLATE,
-          { ...common, to_email: to1 },
-          { attachments: [ { name: `Invoice_${inv}.pdf`, data: b64 } ] }
-        );
-        // send to-to
-        await emailjs.send(
-          EMAILJS_SERVICE,
-          EMAILJS_TEMPLATE,
-          { ...common, to_email: to2 },
-          { attachments: [ { name: `Invoice_${inv}.pdf`, data: b64 } ] }
-        );
-        // mark completed for both logs
-        const other = log.from===store ? log.to : log.from;
-        const u = {};
-        u[`logs/${store}/${month}/${key}/completed`] = true;
-        u[`logs/${other}/${month}/${key}/completed`] = true;
-        await db.ref().update(u);
-        await loadLogs();
-        alert("Invoices sent!");
-      } catch(err) {
-        console.error("EmailJS error:", err);
-        alert("Failed to send invoice.");
-      }
+      // send to “from” location
+      await emailjs.send(EMAILJS_SERVICE,EMAILJS_TEMPLATE,{
+        ...baseParams, to_email: emailAddresses[log.from]
+      });
+      // send to “to” location
+      await emailjs.send(EMAILJS_SERVICE,EMAILJS_TEMPLATE,{
+        ...baseParams, to_email: emailAddresses[log.to]
+      });
+      // mark completed
+      const other = log.from===store?log.to:log.from, u={};
+      u[`logs/${store}/${month}/${key}/completed`]=true;
+      u[`logs/${other}/${month}/${key}/completed`]=true;
+      await db.ref().update(u);
+      await loadLogs();
+      alert("Invoices sent!");
     }
 
     function changeMonth(offset){
-      const [y,m] = selectedMonth.split("-").map(Number);
-      const d = new Date(y,m-1+offset);
-      selectedMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      const [y,m]=selectedMonth.split("-").map(Number);
+      const d=new Date(y,m-1+offset);
+      selectedMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
       loadLogs();
     }
 
     function exportExcel(){
       db.ref("logs").once("value").then(snapshot=>{
-        const wb = XLSX.utils.book_new();
+        const wb=XLSX.utils.book_new();
         snapshot.forEach(storeSnap=>{
-          const name = storeSnap.key, rows = [];
+          const name=storeSnap.key, rows=[];
           storeSnap.forEach(monthSnap=>{
             monthSnap.forEach(logSnap=>{
-              const l = logSnap.val();
-              const tot = l.costPerUnit ? (l.amount*l.costPerUnit).toFixed(2) : "";
+              const l=logSnap.val();
+              const tot=l.costPerUnit?(l.amount*l.costPerUnit).toFixed(2):"";
               rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""]);
             });
           });
-          const ws = XLSX.utils.aoa_to_sheet([
-            ["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],
-            ...rows
+          const ws=XLSX.utils.aoa_to_sheet([
+            ["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows
           ]);
           XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));
         });
@@ -396,7 +353,7 @@
       });
     }
 
-    // Expose globals for inline onclicks
+    // Expose Functions
     window.setupUI     = setupUI;
     window.addTransfer = addTransfer;
     window.editLog     = editLog;
@@ -406,11 +363,12 @@
     window.changeMonth = changeMonth;
     window.exportExcel = exportExcel;
 
-    // Initialize
+    // Kickoff
     setupUI();
   </script>
 </body>
 </html>
+
 
 
 
