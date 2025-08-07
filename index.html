@@ -27,7 +27,6 @@
 <body>
   <h1>Food Transfer Tracker</h1>
 
-  <!-- Form -->
   <div class="form-row">
     <label>Date: <input type="date" id="date"></label>
     <label>From: <select id="from"></select></label>
@@ -45,7 +44,6 @@
   </div>
   <button onclick="addTransfer()">Submit Transfer</button>
 
-  <!-- Logs -->
   <h2>
     Logs for 
     <button onclick="changeMonth(-1)">&lt;</button>
@@ -54,10 +52,9 @@
   </h2>
   <div id="logs"></div>
 
-  <!-- Export -->
   <button onclick="exportExcel()">Download Monthly Report</button>
 
-  <!-- Libraries -->
+  <!-- Dependencies -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
@@ -67,10 +64,10 @@
   <script>
     function $(id){ return document.getElementById(id); }
 
-    // EmailJS init
+    // Initialize EmailJS
     emailjs.init("53xKou9OzR6BhrdWL");
 
-    // Firebase init
+    // Initialize Firebase (compat)
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -86,6 +83,7 @@
     const locations = ["Prohibition","Tulia Osteria","Ce Soir","Beacon"];
     const units     = ["oz","lb","kg","fl oz","ml","L"];
     let selectedMonth = new Date().toISOString().slice(0,7);
+
     const emailAddresses = {
       "Prohibition":   "accounts@prohibitionsocialhouse.com",
       "Beacon":        "accounts@beaconsocialhouse.com",
@@ -93,7 +91,6 @@
       "Ce Soir":       "accounts@cesoirbrasserie.com"
     };
 
-    // Setup UI
     async function setupUI(){
       locations.forEach(loc=>{
         ["from","to"].forEach(id=>{
@@ -123,23 +120,23 @@
 
     async function getNextInvoiceNumber(){
       const snap = await db.ref("invoiceCounter").once("value");
-      const current = snap.exists()?snap.val():1000;
-      const next = current+1;
+      const cur  = snap.exists() ? snap.val() : 1000;
+      const next = cur + 1;
       await db.ref().update({invoiceCounter: next});
       return next;
     }
 
     function renderLogEntry(store,month,key,log){
       const div = document.createElement("div");
-      div.className = log.completed?"log-entry completed":"log-entry";
+      div.className = log.completed ? "log-entry completed" : "log-entry";
       div.dataset.store = store;
       div.dataset.month = month;
       div.dataset.key   = key;
 
-      const costTxt  = log.costPerUnit?` @ $${log.costPerUnit.toFixed(2)} each`:"";
-      const totalTxt = log.costPerUnit?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"";
-      const color    = log.amount<0?"red":"green";
-      const display  = log.amount<0?log.amount:"+"+log.amount;
+      const costTxt  = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
+      const totalTxt = log.costPerUnit ? ` = $${(log.amount*log.costPerUnit).toFixed(2)}` : "";
+      const color    = log.amount < 0 ? "red" : "green";
+      const display  = log.amount < 0 ? log.amount : "+" + log.amount;
 
       let html = `
         <span style="color:${color}; font-size:0.95rem">
@@ -160,76 +157,71 @@
     }
 
     async function loadLogs(){
-      $("logs").innerHTML="";
+      $("logs").innerHTML = "";
       $("current-month").textContent = selectedMonth;
       for(const store of locations){
-        const sec = document.createElement("div");
-        sec.innerHTML = `<h3>${store}</h3>`;
+        const section = document.createElement("div");
+        section.innerHTML = `<h3>${store}</h3>`;
         const snap = await db.ref(`logs/${store}/${selectedMonth}`).once("value");
-        snap.forEach(child=>sec.appendChild(
+        snap.forEach(child => section.appendChild(
           renderLogEntry(store,selectedMonth,child.key,child.val())
         ));
-        $("logs").appendChild(sec);
+        $("logs").appendChild(section);
       }
     }
 
-    // ==== FIXED addTransfer ====
+    // --------------------------------
+    // ADD TRANSFER: generate push key at root of logs
+    // and update both sides under that same key
+    // --------------------------------
     async function addTransfer(){
       const date    = $("date").value,
             from    = $("from").value,
             to      = $("to").value,
             product = $("product").value,
-            amtRaw  = parseFloat($("amount").value),
+            rawAmt  = parseFloat($("amount").value),
             unit    = $("unit").value,
-            cpu     = parseFloat($("cost").value)||null,
-            cmnt    = $("comment").value||"";
+            cpu     = parseFloat($("cost").value) || null,
+            cmnt    = $("comment").value || "";
 
-      if(!date||!from||!to||!product||isNaN(amtRaw)||!unit||from===to){
-        alert("Please complete all fields and ensure From ≠ To.");
+      if(!date||!from||!to||!product||isNaN(rawAmt)||!unit||from===to){
+        alert("Please complete all fields and ensure 'From' ≠ 'To'.");
         return;
       }
 
-      // 1) Build your two log objects
       const mk   = date.slice(0,7);
-      const outLog = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount:-amtRaw };
-      const inLog  = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount:amtRaw };
+      const key  = db.ref('logs').push().key;      // NEW root key
+      console.log("New log key:", key);
 
-      // 2) Create a new key under the FROM path
-      const fromRef = db.ref(`logs/${from}/${mk}`);
-      const newRef  = fromRef.push();   // this generates a unique key
-      console.log("🆕 new log key:", newRef.key);
+      const outLog = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount:-rawAmt };
+      const inLog  = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount: rawAmt };
 
-      // 3) Write outLog at that new key
+      const updates = {};
+      updates[`logs/${from}/${mk}/${key}`] = outLog;
+      updates[`logs/${to}/${mk}/${key}`]   = inLog;
+
       try {
-        await newRef.set(outLog);
-      } catch(err) {
-        console.error("Failed to write outgoing log:", err);
-        alert("Error logging transfer (outgoing).");
+        await db.ref().update(updates);
+      } catch(err){
+        console.error("Error writing logs:", err);
+        alert("Failed to log transfer.");
         return;
       }
 
-      // 4) Mirror the SAME key under the TO path
-      const toRef = db.ref(`logs/${to}/${mk}/${newRef.key}`);
-      try {
-        await toRef.set(inLog);
-      } catch(err) {
-        console.error("Failed to write incoming log:", err);
-        alert("Error logging transfer (incoming).");
-        return;
-      }
-
-      // 5) Clear form and reload
+      // clear form & reload
       ["product","amount","cost","comment"].forEach(i=>$(i).value="");
       $("unit").selectedIndex = 0;
       updateTotalValue();
       await loadLogs();
     }
 
-    // (editLog, saveEdit, openInvoice, sendInvoice, changeMonth, exportExcel remain unchanged)
+    // EDIT / SAVE / INVOICE / etc. remain exactly the same as your last working Tracker5 version
+    // (ensure you also expose editLog, saveEdit, openInvoice, sendInvoice, changeMonth, exportExcel)
 
     window.addTransfer = addTransfer;
     window.setupUI    = setupUI;
-    // also expose editLog, saveEdit, openInvoice, sendInvoice, changeMonth, exportExcel...
+    // also: window.editLog = editLog; window.saveEdit = saveEdit; window.openInvoice = openInvoice;
+    // window.sendInvoice = sendInvoice; window.changeMonth = changeMonth; window.exportExcel = exportExcel;
 
     setupUI();
     $("date").valueAsDate = new Date();
