@@ -6,7 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
-    h1,h2,h3 { text-align:center; margin-bottom:10px }
+    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+    h1 { margin:0; font-size:1.8rem; }
+    #login-btn { background:#28a745; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.9rem; }
+    #login-btn.logout { background:#dc3545; }
     .form-row { margin-bottom:10px }
     input, select, button { width:100%; padding:8px; margin:6px 0; box-sizing:border-box; font-size:1rem }
     label { font-weight:bold; display:block; margin-top:10px }
@@ -14,13 +17,11 @@
     .log-entry.completed { opacity:0.6 }
     .completed-label { font-style:italic; color:green; margin-top:5px }
     #total-value { font-size:0.95rem; color:#333; margin-bottom:10px }
-    .admin-only { display:none; }            /* hidden by default */
-    body.admin .admin-only { display:block; }/* show when in admin mode */
-    #login-btn { position:fixed; top:15px; right:15px; background:#28a745; color:#fff; border:none; padding:8px 12px; cursor:pointer; }
-    #login-btn.logout { background:#dc3545; }
-    button { background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer; transition:background-color .3s }
-    button:hover { background:#0056b3 }
-    button:active { background:#003f7f; transform:scale(0.98) }
+    .admin-only { display:none; }
+    body.admin .admin-only { display:block; }
+    button.main { background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer; transition:background-color .3s }
+    button.main:hover { background:#0056b3 }
+    button.main:active { background:#003f7f; transform:scale(0.98) }
     @media(min-width:600px){
       .form-row { display:flex; gap:10px }
       input, select { flex:1; width:auto }
@@ -29,8 +30,11 @@
   </style>
 </head>
 <body>
-  <button id="login-btn">Login</button>
-  <h1>Food Transfer Tracker</h1>
+
+  <div class="header">
+    <h1>Food Transfer Tracker</h1>
+    <button id="login-btn">Login</button>
+  </div>
 
   <!-- Input Form -->
   <div class="form-row">
@@ -48,19 +52,17 @@
     <div id="total-value"></div>
     <label>Comment: <input id="comment" placeholder="Optional comment"></label>
   </div>
-  <button onclick="addTransfer()">Submit Transfer</button>
+  <button class="main" onclick="addTransfer()">Submit Transfer</button>
 
   <!-- Logs -->
   <h2>
-    Logs for 
-    <button onclick="changeMonth(-1)">&lt;</button>
+    Logs for
+    <button class="main" onclick="changeMonth(-1)">&lt;</button>
     <span id="current-month"></span>
-    <button onclick="changeMonth(1)">&gt;</button>
+    <button class="main" onclick="changeMonth(1)">&gt;</button>
   </h2>
   <div id="logs"></div>
-
-  <!-- Export -->
-  <button class="admin-only" onclick="exportExcel()">Download Monthly Report</button>
+  <button class="main admin-only" onclick="exportExcel()">Download Monthly Report</button>
 
   <!-- Dependencies -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -70,16 +72,11 @@
   <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
 
   <script>
-    // ——— CONFIG ———
-    const ADMIN_PASSWORD = "SuperSecret123";  // ← set your password here
-    // ——————————
+    const ADMIN_PASSWORD = "SuperSecret123";
 
     function $(id){ return document.getElementById(id); }
-
-    // EmailJS init
     emailjs.init("53xKou9OzR6BhrdWL");
 
-    // Firebase init
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -103,62 +100,57 @@
       "Ce Soir":       "accounts@cesoirbrasserie.com"
     };
 
-    // Admin state
-    function isAdmin(){ return localStorage.getItem("isAdmin") === "true"; }
+    function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
     function setAdmin(v){
       localStorage.setItem("isAdmin", v?"true":"false");
       document.body.classList.toggle("admin", v);
       const btn = $("login-btn");
       btn.textContent = v ? "Logout" : "Login";
       btn.classList.toggle("logout", v);
-      loadLogs();  // re-render so admin-only buttons appear
+      loadLogs();
     }
+
     $("login-btn").addEventListener("click", ()=>{
-      if(isAdmin()){
-        return setAdmin(false);
-      }
+      if(isAdmin()) return setAdmin(false);
       const pw = prompt("Enter admin password:");
-      if(pw === ADMIN_PASSWORD){
-        setAdmin(true);
-      } else {
-        alert("Incorrect password.");
-      }
+      if(pw===ADMIN_PASSWORD) setAdmin(true);
+      else alert("Incorrect password.");
     });
 
-    // UI Setup
     async function setupUI(){
       locations.forEach(loc=>{
         ["from","to"].forEach(id=>{
           const o=document.createElement("option");
-          o.value = o.textContent = loc;
+          o.value=o.textContent=loc;
           $(id).appendChild(o);
         });
       });
       units.forEach(u=>{
         const o=document.createElement("option");
-        o.value = o.textContent = u;
+        o.value=o.textContent=u;
         $("unit").appendChild(o);
       });
       ["unit","amount","cost"].forEach(id=>
-        $(id).addEventListener("input", updateTotalValue)
+        $(id).addEventListener("input",updateTotalValue)
       );
-      $("date").valueAsDate = new Date();
-      setAdmin(isAdmin());  // apply admin state from prior session
+      $("date").valueAsDate=new Date();
+      setAdmin(isAdmin());
       await loadLogs();
     }
 
     function updateTotalValue(){
       $("unit-label").textContent = $("unit").value;
-      const a=parseFloat($("amount").value), c=parseFloat($("cost").value);
+      const a=parseFloat($("amount").value),
+            c=parseFloat($("cost").value);
       $("total-value").textContent = (!isNaN(a)&&!isNaN(c))
         ? `Total Value: $${(a*c).toFixed(2)}` : "";
     }
 
     async function getNextInvoiceNumber(){
-      const snap = await db.ref("invoiceCounter").once("value");
-      const cur  = snap.exists()?snap.val():1000;
-      const nxt  = cur + 1;
-      await db.ref().update({invoiceCounter: nxt});
+      const snap=await db.ref("invoiceCounter").once("value");
+      const cur =snap.exists()?snap.val():1000;
+      const nxt =cur+1;
+      await db.ref().update({invoiceCounter:nxt});
       return nxt;
     }
 
@@ -166,12 +158,10 @@
       const div=document.createElement("div");
       div.className=log.completed?"log-entry completed":"log-entry";
       div.dataset.store=store; div.dataset.month=month; div.dataset.key=key;
-
       const costTxt=log.costPerUnit?` @ $${log.costPerUnit.toFixed(2)} each`:"";
       const totalTxt=log.costPerUnit?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"";
       const color=log.amount<0?"red":"green";
       const display=log.amount<0?log.amount:"+"+log.amount;
-
       let html=`
         <span style="color:${color};font-size:0.95rem">
           ${display} ${log.unit} of ${log.product}${costTxt}${totalTxt}
@@ -215,7 +205,8 @@
       const product=$("product").value, rawAmt=parseFloat($("amount").value);
       const unit=$("unit").value, cpu=parseFloat($("cost").value)||null;
       const cmnt=$("comment").value||"";
-      if(!date||!from||!to||!product||isNaN(rawAmt)||!unit||from===to){
+      if(!date||!from||
+         !to||!product||isNaN(rawAmt)||!unit||from===to){
         return alert("Complete all fields and ensure From≠To.");
       }
       const mk=date.slice(0,7),
@@ -306,14 +297,14 @@
       const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value");
       const log=snap.val(); if(!log) return alert("Not found.");
       const params={
-        date:           log.date,
-        from_location:  log.from,
-        to_location:    log.to,
-        subject:        `Aidan Food Transfer ${log.date} #${inv}`,
-        to_email:       emailAddresses[log.from]
+        date: log.date,
+        from_location: log.from,
+        to_location: log.to,
+        subject: `Aidan Food Transfer ${log.date} #${inv}`,
+        to_email: emailAddresses[log.from]
       };
-      // simple link-only; attachment deferred
-      params.pdf_url = uri; // if you wanted link inside template
+      // minimal template
+      params.pdf_url = uri;
       try {
         await emailjs.send('service_gnviol9','template_6d3c34k',params);
         params.to_email = emailAddresses[log.to];
@@ -356,7 +347,6 @@
       });
     }
 
-    // Expose
     window.setupUI    = setupUI;
     window.addTransfer= addTransfer;
     window.editLog    = editLog;
@@ -366,12 +356,10 @@
     window.changeMonth= changeMonth;
     window.exportExcel= exportExcel;
 
-    // Init
     setupUI();
   </script>
 </body>
 </html>
-
 
 
 
