@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Transfer Tracker</title>
+  <title>Food Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -93,13 +93,13 @@
     async function setupUI(){
       locations.forEach(loc=>{
         ["from","to"].forEach(id=>{
-          const o = document.createElement("option");
+          const o=document.createElement("option");
           o.value = o.textContent = loc;
           $(id).appendChild(o);
         });
       });
       units.forEach(u=>{
-        const o = document.createElement("option");
+        const o=document.createElement("option");
         o.value = o.textContent = u;
         $("unit").appendChild(o);
       });
@@ -111,7 +111,7 @@
 
     function updateTotalValue(){
       $("unit-label").textContent = $("unit").value;
-      const a = parseFloat($("amount").value), c = parseFloat($("cost").value);
+      const a=parseFloat($("amount").value), c=parseFloat($("cost").value);
       $("total-value").textContent = (!isNaN(a)&&!isNaN(c))
         ? `Total Value: $${(a*c).toFixed(2)}` : "";
     }
@@ -120,21 +120,21 @@
       const snap = await db.ref("invoiceCounter").once("value");
       const cur  = snap.exists() ? snap.val() : 1000;
       const next = cur + 1;
-      await db.ref().update({invoiceCounter: next});
+      await db.ref().update({ invoiceCounter: next });
       return next;
     }
 
     function renderLogEntry(store,month,key,log){
       const div = document.createElement("div");
-      div.className   = log.completed ? "log-entry completed" : "log-entry";
+      div.className     = log.completed ? "log-entry completed" : "log-entry";
       div.dataset.store = store;
       div.dataset.month = month;
       div.dataset.key   = key;
 
       const costTxt  = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
       const totalTxt = log.costPerUnit ? ` = $${(log.amount*log.costPerUnit).toFixed(2)}` : "";
-      const color    = log.amount < 0 ? "red" : "green";
-      const display  = log.amount < 0 ? log.amount : "+" + log.amount;
+      const color    = log.amount<0 ? "red" : "green";
+      const display  = log.amount<0 ? log.amount : "+"+log.amount;
 
       let html = `
         <span style="color:${color}; font-size:0.95rem">
@@ -143,7 +143,7 @@
         </span><br>
       `;
 
-      if (!log.completed) {
+      if(!log.completed){
         html += `
           <button onclick="editLog('${store}','${month}','${key}',this)">Edit</button>
           <button onclick="openInvoice('${store}','${month}','${key}')">Create Invoice</button>
@@ -159,15 +159,18 @@
     async function loadLogs(){
       $("logs").innerHTML = "";
       $("current-month").textContent = selectedMonth;
-      for (const store of locations) {
+      for(const store of locations){
         const section = document.createElement("div");
         section.innerHTML = `<h3>${store}</h3>`;
         const snap = await db.ref(`logs/${store}/${selectedMonth}`).once("value");
-        snap.forEach(child => section.appendChild(renderLogEntry(store,selectedMonth,child.key,child.val())));
+        snap.forEach(child => section.appendChild(
+          renderLogEntry(store,selectedMonth,child.key,child.val())
+        ));
         $("logs").appendChild(section);
       }
     }
 
+    // <<< CHANGED: use push().set() on each path >>>
     async function addTransfer(){
       const date      = $("date").value,
             from      = $("from").value,
@@ -177,66 +180,94 @@
             unit      = $("unit").value,
             cpu       = parseFloat($("cost").value)||null,
             comment   = $("comment").value||"";
-      if (!date||!from||!to||!product||isNaN(rawAmt)||!unit||from===to){
-        alert("Complete all fields and ensure 'from'≠'to'."); return;
+      if(!date||!from||!to||!product||isNaN(rawAmt)||!unit||from===to){
+        alert("Complete all fields and ensure 'from'≠'to'.");
+        return;
       }
-      const monthKey = date.slice(0,7),
-            key      = db.ref(`logs/${from}/${monthKey}`).push().key;
-      const base  = { date, from, to, product, unit, costPerUnit:cpu, comment, completed:false },
-            out   = { ...base, amount: -rawAmt },
-            inbound = { ...base, amount: rawAmt };
-      const updates = {};
-      updates[`logs/${from}/${monthKey}/${key}`] = out;
-      updates[`logs/${to}/${monthKey}/${key}`]   = inbound;
-      await db.ref().update(updates);
+
+      const monthKey = date.slice(0,7);
+      // push to 'from'
+      const fromRef = db.ref(`logs/${from}/${monthKey}`).push();
+      await fromRef.set({
+        date, from, to, product, unit,
+        costPerUnit: cpu,
+        comment,
+        completed: false,
+        amount: -rawAmt
+      });
+
+      // push to 'to' with same key
+      const toRef = db.ref(`logs/${to}/${monthKey}/${fromRef.key}`);
+      await toRef.set({
+        date, from, to, product, unit,
+        costPerUnit: cpu,
+        comment,
+        completed: false,
+        amount: rawAmt
+      });
+
+      // reset form
       ["product","amount","cost","comment"].forEach(id=>$(id).value="");
       $("unit").selectedIndex=0; updateTotalValue();
+
       await loadLogs();
     }
 
     async function editLog(store,month,key,btn){
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value"),
             data = snap.val();
-      if (!data) return alert("Not found");
+      if(!data) return alert("Not found");
+
       const p = btn.parentElement;
       p.innerHTML = `
-        <input id="e-date" type="date" value="${data.date}">
-        <input id="e-prod" placeholder="Product" value="${data.product}">
-        <input id="e-amt"  type="number" value="${Math.abs(data.amount)}">
-        <select id="e-unit">${units.map(u=>`<option${u===data.unit? " selected":""}>${u}</option>`).join("")}</select>
-        <input id="e-cost" placeholder="Cost/unit" value="${data.costPerUnit||""}">
-        <input id="e-cmnt" placeholder="Comment" value="${data.comment||""}">
+        <input id="e-date"  type="date"   value="${data.date}">
+        <input id="e-prod"  placeholder="Product" value="${data.product}">
+        <input id="e-amt"   type="number" value="${Math.abs(data.amount)}">
+        <select id="e-unit">${units.map(u=>
+           `<option${u===data.unit?" selected":""}>${u}</option>`
+        ).join("")}</select>
+        <input id="e-cost"  placeholder="Cost/unit" value="${data.costPerUnit||""}">
+        <input id="e-cmnt"  placeholder="Comment" value="${data.comment||""}">
         <button onclick="saveEdit('${data.from}','${data.to}','${month}','${key}')">Save</button>
       `;
     }
 
+    // <<< CHANGED: mirror set logic on edit >>>
     async function saveEdit(from,to,month,key){
-      const dateVal   = $("e-date").value,
-            prodVal   = $("e-prod").value,
-            amtVal    = parseFloat($("e-amt").value),
-            unitVal   = $("e-unit").value,
-            costVal   = parseFloat($("e-cost").value)||null,
-            cmntVal   = $("e-cmnt").value||"",
-            base      = { date:dateVal, from, to, product:prodVal, unit:unitVal, costPerUnit:costVal, comment:cmntVal, completed:false },
-            outLog    = { ...base, amount: -amtVal },
-            inLog     = { ...base, amount: amtVal },
-            updates   = {};
-      updates[`logs/${from}/${month}/${key}`] = outLog;
-      updates[`logs/${to}/${month}/${key}`]   = inLog;
-      await db.ref().update(updates);
+      const dateVal = $("e-date").value,
+            prodVal = $("e-prod").value,
+            amtVal  = parseFloat($("e-amt").value),
+            unitVal = $("e-unit").value,
+            costVal = parseFloat($("e-cost").value)||null,
+            cmntVal = $("e-cmnt").value||"";
+
+      // update both sides
+      await db.ref(`logs/${from}/${month}/${key}`).set({
+        date: dateVal, from, to, product: prodVal, unit: unitVal,
+        costPerUnit: costVal, comment: cmntVal,
+        completed: false, amount: -amtVal
+      });
+      await db.ref(`logs/${to}/${month}/${key}`).set({
+        date: dateVal, from, to, product: prodVal, unit: unitVal,
+        costPerUnit: costVal, comment: cmntVal,
+        completed: false, amount: amtVal
+      });
+
       await loadLogs();
     }
 
     async function openInvoice(store,month,key){
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value"),
             log  = snap.val();
-      if (!log) return alert("Not found");
-      const inv   = await getNextInvoiceNumber(),
+      if(!log) return alert("Not found");
+
+      const inv = await getNextInvoiceNumber(),
             { jsPDF } = window.jspdf,
-            doc   = new jsPDF(),
-            amt   = log.amount,
+            doc = new jsPDF(),
+            amt = log.amount,
             total = log.costPerUnit ? (amt*log.costPerUnit).toFixed(2) : "0.00",
-            dir   = amt<0?"Outgoing":"Incoming";
+            dir = amt<0?"Outgoing":"Incoming";
+
       doc.setFontSize(16); doc.text(`Invoice #${inv}`,20,20);
       doc.setFontSize(12);
       doc.text(`From: ${log.from}`,20,30);
@@ -247,17 +278,21 @@
       doc.text(`Cost per unit: $${log.costPerUnit||"0.00"}`,20,80);
       doc.text(`Total Value: $${total}`,20,90);
       doc.text(`Direction: ${dir}`,20,100);
-      if (log.comment) doc.text(`Comment: ${log.comment}`,20,110);
+      if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
+
       const uri = doc.output("datauristring"),
             win = window.open("","_blank");
       win.document.write(`
         <html><head><title>Invoice Preview</title>
-        <style>body{margin:0;font-family:Arial;}iframe{width:100%;height:90vh;border:none;} .buttons{padding:10px;display:flex;justify-content:space-around;background:#f0f0f0;border-top:1px solid #ccc;} button{padding:10px 20px;font-size:1rem;border:none;border-radius:5px;cursor:pointer;transition:.2s;} button:active{transform:scale(.98);} .send{background:green;color:#fff;} .cancel{background:red;color:#fff;}</style>
-        </head><body>
+        <style>body{margin:0;font-family:Arial;}iframe{width:100%;height:90vh;border:none;}
+        .buttons{padding:10px;display:flex;justify-content:space-around;background:#f0f0f0;border-top:1px solid #ccc;}
+        button{padding:10px 20px;font-size:1rem;border:none;border-radius:5px;cursor:pointer;transition:.2s;}
+        button:active{transform:scale(.98);} .send{background:green;color:#fff;} .cancel{background:red;color:#fff;}
+        </style></head><body>
         <iframe src="${uri}"></iframe>
         <div class="buttons">
           <button class="cancel" onclick="window.close()">Cancel</button>
-          <button class="send" onclick="window.opener.sendInvoice('${store}','${month}','${key}',${inv}, '${uri}');window.close()">Send Invoice</button>
+          <button class="send" onclick="window.opener.sendInvoice('${store}','${month}','${key}',${inv},'${uri}');window.close()">Send Invoice</button>
         </div></body></html>
       `);
     }
@@ -265,7 +300,8 @@
     async function sendInvoice(store,month,key,inv,pdfDataUri){
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value"),
             log  = snap.val();
-      if (!log) return alert("Not found");
+      if(!log) return alert("Not found");
+
       const other    = log.from===store? log.to : log.from,
             fromAddr = emailAddresses[log.from],
             toAddr   = emailAddresses[log.to],
@@ -283,19 +319,30 @@
               direction:      log.amount<0?"Outgoing":"Incoming",
               comment:        log.comment||"",
               subject
+            },
+            attachment = {
+              name: `Invoice_${inv}.pdf`,
+              data: pdfDataUri
             };
+
       console.log(">>> EMAIL PARAMS:", params);
-      const attachment = {
-        name: `Invoice_${inv}.pdf`,
-        data: pdfDataUri
-      };
+
       try {
-        await emailjs.send('service_gnviol9','template_6d3c34k',{ ...params, to_email: fromAddr, attachments: [attachment] });
-        await emailjs.send('service_gnviol9','template_6d3c34k',{ ...params, to_email: toAddr,   attachments: [attachment] });
-        const updates = {};
-        updates[`logs/${store}/${month}/${key}/completed`] = true;
-        updates[`logs/${other}/${month}/${key}/completed`] = true;
-        await db.ref().update(updates);
+        await emailjs.send('service_gnviol9','template_6d3c34k',{
+          ...params,
+          to_email:  fromAddr,
+          attachments: [attachment]
+        });
+        await emailjs.send('service_gnviol9','template_6d3c34k',{
+          ...params,
+          to_email:  toAddr,
+          attachments: [attachment]
+        });
+
+        // mark completed
+        await db.ref(`logs/${store}/${month}/${key}/completed`).set(true);
+        await db.ref(`logs/${other}/${month}/${key}/completed`).set(true);
+
         await loadLogs();
         alert("Invoices sent!");
       } catch(e){
@@ -329,6 +376,7 @@
       });
     }
 
+    // expose globals
     window.setupUI     = setupUI;
     window.addTransfer = addTransfer;
     window.editLog     = editLog;
@@ -343,6 +391,7 @@
   </script>
 </body>
 </html>
+
 
 
 
