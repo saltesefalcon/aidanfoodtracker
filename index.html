@@ -63,10 +63,10 @@
   <script>
     function $(id){ return document.getElementById(id); }
 
-    // Initialize EmailJS
+    // Init EmailJS
     emailjs.init("53xKou9OzR6BhrdWL");
 
-    // Initialize Firebase (compat)
+    // Init Firebase (compat)
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -90,17 +90,16 @@
       "Ce Soir":       "accounts@cesoirbrasserie.com"
     };
 
-    // Populate dropdowns & load logs
     async function setupUI(){
       locations.forEach(loc=>{
         ["from","to"].forEach(id=>{
-          const o = document.createElement("option");
+          const o=document.createElement("option");
           o.value = o.textContent = loc;
           $(id).appendChild(o);
         });
       });
       units.forEach(u=>{
-        const o = document.createElement("option");
+        const o=document.createElement("option");
         o.value = o.textContent = u;
         $("unit").appendChild(o);
       });
@@ -112,150 +111,141 @@
 
     function updateTotalValue(){
       $("unit-label").textContent = $("unit").value;
-      const a = parseFloat($("amount").value),
-            c = parseFloat($("cost").value);
+      const a=parseFloat($("amount").value), c=parseFloat($("cost").value);
       $("total-value").textContent = (!isNaN(a)&&!isNaN(c))
         ? `Total Value: $${(a*c).toFixed(2)}` : "";
     }
 
     async function getNextInvoiceNumber(){
       const snap = await db.ref("invoiceCounter").once("value");
-      const cur  = snap.exists() ? snap.val() : 1000;
-      const next = cur + 1;
-      await db.ref().update({invoiceCounter: next});
-      return next;
+      const cur = snap.exists()?snap.val():1000;
+      const nxt = cur+1;
+      await db.ref().update({invoiceCounter: nxt});
+      return nxt;
     }
 
     function renderLogEntry(store,month,key,log){
       const div = document.createElement("div");
-      div.className   = log.completed ? "log-entry completed" : "log-entry";
-      div.dataset.store = store;
-      div.dataset.month = month;
-      div.dataset.key   = key;
+      div.className = log.completed?"log-entry completed":"log-entry";
+      div.dataset.store=store; div.dataset.month=month; div.dataset.key=key;
 
-      const costTxt  = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
-      const totalTxt = log.costPerUnit ? ` = $${(log.amount*log.costPerUnit).toFixed(2)}` : "";
-      const color    = log.amount < 0 ? "red" : "green";
-      const display  = log.amount < 0 ? log.amount : "+" + log.amount;
+      const costTxt  = log.costPerUnit?` @ $${log.costPerUnit.toFixed(2)} each`:"";
+      const totalTxt = log.costPerUnit?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"";
+      const color    = log.amount<0?"red":"green";
+      const display  = log.amount<0?log.amount:"+"+log.amount;
 
-      let html = `
-        <span style="color:${color}; font-size:0.95rem">
+      let html=`
+        <span style="color:${color};font-size:0.95rem">
           ${display} ${log.unit} of ${log.product}${costTxt}${totalTxt}
           (${log.date}${log.comment?` | ${log.comment}`:""})
         </span><br>
       `;
       if(!log.completed){
-        html += `
+        html+=`
           <button onclick="editLog('${store}','${month}','${key}',this)">Edit</button>
           <button onclick="openInvoice('${store}','${month}','${key}')">Create Invoice</button>
         `;
       } else {
-        html += `<div class="completed-label">Completed</div>`;
+        html+=`<div class="completed-label">Completed</div>`;
       }
-      div.innerHTML = html;
+      div.innerHTML=html;
       return div;
     }
 
     async function loadLogs(){
-      $("logs").innerHTML = "";
-      $("current-month").textContent = selectedMonth;
+      $("logs").innerHTML="";
+      $("current-month").textContent=selectedMonth;
       for(const store of locations){
-        const section = document.createElement("div");
-        section.innerHTML = `<h3>${store}</h3>`;
-        const snap = await db.ref(`logs/${store}/${selectedMonth}`).once("value");
-        snap.forEach(child =>
-          section.appendChild(renderLogEntry(store,selectedMonth,child.key,child.val()))
-        );
+        const section=document.createElement("div");
+        section.innerHTML=`<h3>${store}</h3>`;
+        const snap=await db.ref(`logs/${store}/${selectedMonth}`).once("value");
+        snap.forEach(child=>section.appendChild(
+          renderLogEntry(store,selectedMonth,child.key,child.val())
+        ));
         $("logs").appendChild(section);
       }
     }
 
-    // Add a new transfer (single push key + multi‐path update)
+    // <<< FIXED: generate key under the from-path >>>
     async function addTransfer(){
       const date    = $("date").value,
             from    = $("from").value,
             to      = $("to").value,
             product = $("product").value,
-            rawAmt  = parseFloat($("amount").value),
+            amtRaw  = parseFloat($("amount").value),
             unit    = $("unit").value,
             cpu     = parseFloat($("cost").value)||null,
-            comment = $("comment").value||"";
-
-      if(!date||!from||!to||!product||isNaN(rawAmt)||!unit||from===to){
-        alert("Complete all fields and make sure From ≠ To.");
-        return;
+            cmnt    = $("comment").value||"";
+      if(!date||!from||!to||!product||isNaN(amtRaw)||!unit||from===to){
+        return alert("Complete all fields and ensure From≠To.");
       }
 
-      const monthKey = date.slice(0,7);
-      const newKey   = db.ref().child('logs').push().key;
+      const mk   = date.slice(0,7),
+            fromRef = db.ref(`logs/${from}/${mk}`),
+            key   = fromRef.push().key;
 
-      const outLog = { date, from, to, product, unit, costPerUnit:cpu, comment, completed:false, amount: -rawAmt };
-      const inLog  = { date, from, to, product, unit, costPerUnit:cpu, comment, completed:false, amount:  rawAmt };
+      const outLog = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount: -amtRaw },
+            inLog  = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount:  amtRaw },
+            upd    = {};
 
-      const updates = {};
-      updates[`logs/${from}/${monthKey}/${newKey}`] = outLog;
-      updates[`logs/${to}/${monthKey}/${newKey}`]   = inLog;
-      await db.ref().update(updates);
+      upd[`logs/${from}/${mk}/${key}`] = outLog;
+      upd[`logs/${to}/${mk}/${key}`]   = inLog;
+      await db.ref().update(upd);
 
-      ["product","amount","cost","comment"].forEach(id=>$(id).value="");
+      ["product","amount","cost","comment"].forEach(i=>$(i).value="");
       $("unit").selectedIndex=0; updateTotalValue();
       await loadLogs();
     }
 
-    // Edit existing log
     async function editLog(store,month,key,btn){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
-      const data = snap.val();
-      if(!data) { alert("Not found"); return; }
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"),
+            d=snap.val();
+      if(!d) return alert("Not found");
 
-      const p = btn.parentElement;
-      p.innerHTML = `
-        <input id="e-date"  type="date"   value="${data.date}">
-        <input id="e-prod"  placeholder="Product" value="${data.product}">
-        <input id="e-amt"   type="number" value="${Math.abs(data.amount)}">
+      const p=btn.parentElement;
+      p.innerHTML=`
+        <input id="e-date" type="date" value="${d.date}">
+        <input id="e-prod" placeholder="Product" value="${d.product}">
+        <input id="e-amt"  type="number" value="${Math.abs(d.amount)}">
         <select id="e-unit">${units.map(u=>
-          `<option${u===data.unit?" selected":""}>${u}</option>`
+          `<option${u===d.unit?" selected":""}>${u}</option>`
         ).join("")}</select>
-        <input id="e-cost"  placeholder="Cost/unit" value="${data.costPerUnit||""}">
-        <input id="e-cmnt"  placeholder="Comment" value="${data.comment||""}">
-        <button onclick="saveEdit('${data.from}','${data.to}','${month}','${key}')">Save</button>
+        <input id="e-cost" placeholder="Cost/unit" value="${d.costPerUnit||""}">
+        <input id="e-cmnt" placeholder="Comment" value="${d.comment||""}">
+        <button onclick="saveEdit('${d.from}','${d.to}','${month}','${key}')">Save</button>
       `;
     }
 
-    // Save an edited log (multi‐path update)
     async function saveEdit(from,to,month,key){
-      const dateVal = $("e-date").value,
-            prodVal = $("e-prod").value,
-            amtVal  = parseFloat($("e-amt").value),
-            unitVal = $("e-unit").value,
-            costVal = parseFloat($("e-cost").value)||null,
-            cmntVal = $("e-cmnt").value||"";
-
-      const outLog = { date:dateVal, from, to, product:prodVal, unit:unitVal, costPerUnit:costVal, comment:cmntVal, completed:false, amount: -amtVal };
-      const inLog  = { date:dateVal, from, to, product:prodVal, unit:unitVal, costPerUnit:costVal, comment:cmntVal, completed:false, amount:  amtVal };
-
-      const updates = {};
-      updates[`logs/${from}/${month}/${key}`] = outLog;
-      updates[`logs/${to}/${month}/${key}`]   = inLog;
-      await db.ref().update(updates);
+      const dv=$("e-date").value,
+            pv=$("e-prod").value,
+            av=parseFloat($("e-amt").value),
+            uv=$("e-unit").value,
+            cv=parseFloat($("e-cost").value)||null,
+            cm=$("e-cmnt").value||"",
+            out={ date:dv, from, to, product:pv, unit:uv, costPerUnit:cv, comment:cm, completed:false, amount:-av },
+            inp={ date:dv, from, to, product:pv, unit:uv, costPerUnit:cv, comment:cm, completed:false, amount:av },
+            up={};
+      up[`logs/${from}/${month}/${key}`]=out;
+      up[`logs/${to}/${month}/${key}`]=inp;
+      await db.ref().update(up);
       await loadLogs();
     }
 
-    // (Your openInvoice, sendInvoice, changeMonth, exportExcel remain unchanged...)
+    // ... openInvoice, sendInvoice, changeMonth, exportExcel are unchanged from your last working Tracker5 ...
 
-    // Expose to global scope for onclick handlers:
-    window.addTransfer = addTransfer;
-    window.editLog    = editLog;
-    window.saveEdit   = saveEdit;
-    window.setupUI    = setupUI;
-    // and also expose openInvoice, sendInvoice, changeMonth, exportExcel...
-
-    // Initialize
+    // expose
+    window.addTransfer=addTransfer;
+    window.editLog   =editLog;
+    window.saveEdit  =saveEdit;
+    window.setupUI   =setupUI;
+    // also expose openInvoice, sendInvoice, changeMonth, exportExcel...
     setupUI();
-    $("date").valueAsDate = new Date();
+    $("date").valueAsDate=new Date();
   </script>
 </body>
 </html>
+
 
 
 
