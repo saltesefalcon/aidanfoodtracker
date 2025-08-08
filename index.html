@@ -339,43 +339,30 @@
       `);
     }
 
-    // Send invoice emails with PDF as true attachment
+    // Send invoice emails with PDF attachment
     async function sendInvoice(store,month,key,inv,uri){
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
       const log  = snap.val(); if(!log) return alert("Not found.");
 
-      // Strip data URI header
-      const base64pdf = uri.split(',')[1];
-
-      // Build dynamic attachments array with type
-      const attachments = [
-        {
-          name: `Invoice_${inv}.pdf`,
-          data: base64pdf,
-          type: 'application/pdf'
-        }
-      ];
-
-      const commonParams = {
-        date:          log.date,
-        from_location: log.from,
-        to_location:   log.to,
-        subject:       `Aidan Food Transfer ${log.date} #${inv}`,
-        attachments    // matches Parameter Name in your EmailJS template
+      const params = {
+        date:            log.date,
+        from_location:   log.from,
+        to_location:     log.to,
+        subject:         `Aidan Food Transfer ${log.date} #${inv}`,
+        invoice_number:  inv,
+        attachments:     uri   // full data-URI
       };
 
       try {
-        // send to “from”
+        // send to “from” location
         await emailjs.send(
-          'service_gnviol9',
-          'template_6d3c34k',
-          { ...commonParams, to_email: emailAddresses[log.from] }
+          'service_gnviol9','template_6d3c34k',
+          { ...params, to_email: emailAddresses[log.from] }
         );
-        // send to “to”
+        // send to “to” location
         await emailjs.send(
-          'service_gnviol9',
-          'template_6d3c34k',
-          { ...commonParams, to_email: emailAddresses[log.to] }
+          'service_gnviol9','template_6d3c34k',
+          { ...params, to_email: emailAddresses[log.to] }
         );
 
         // mark completed
@@ -441,6 +428,7 @@
   </script>
 </body>
 </html>
+
 
 
 
