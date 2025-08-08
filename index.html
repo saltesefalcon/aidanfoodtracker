@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -144,7 +144,7 @@
       $("submit-btn").addEventListener("click", addTransfer);
       addItem();
       setAdmin(isAdmin());
-      // initialize date-range inputs to today
+      // initialize date-range inputs
       $("report-start").value = new Date().toISOString().slice(0,10);
       $("report-end").value   = new Date().toISOString().slice(0,10);
     }
@@ -212,30 +212,53 @@
 
     // ----- Submit all items as transfers -----
     async function addTransfer(){
-      const date=$("date").value, from=$("from").value, to=$("to").value;
-      if(!date||!from||!to||from===to) return alert("Select date and/from/to with From≠To.");
-      const mk=date.slice(0,7);
-      const groups=document.querySelectorAll('.item-group');
+      const date = $("date").value;
+      const from = $("from").value;
+      const to   = $("to").value;
+      if(!date || !from || !to || from===to) 
+        return alert("Select date and/from/to with From≠To.");
+
+      // ensure logs view matches chosen date
+      selectedMonth = date.slice(0,7);
+
+      const mk = selectedMonth;
+      const groups = document.querySelectorAll('.item-group');
       for(const g of groups){
-        const product=g.querySelector('[name="product"]').value;
-        const amt    =parseFloat(g.querySelector('[name="amount"]').value);
-        const unit   =g.querySelector('[name="unit"]').value;
-        const cpu    =parseFloat(g.querySelector('[name="cost"]').value)||null;
-        const cmnt   =g.querySelector('[name="comment"]').value||"";
-        if(!product||isNaN(amt)||!unit) return alert("Complete all item fields.");
-        const key=db.ref('logs').push().key;
-        const out={date,from,to,product,unit,costPerUnit:cpu,comment:cmnt,completed:false,amount:-amt};
-        const inLog={date,from,to,product,unit,costPerUnit:cpu,comment:cmnt,completed:false,amount:amt};
-        const upd={}; upd[`logs/${from}/${mk}/${key}`]=out; upd[`logs/${to}/${mk}/${key}`]=inLog;
+        const product = g.querySelector('[name="product"]').value;
+        const amt     = parseFloat(g.querySelector('[name="amount"]').value);
+        const unit    = g.querySelector('[name="unit"]').value;
+        const cpu     = parseFloat(g.querySelector('[name="cost"]').value) || null;
+        const cmnt    = g.querySelector('[name="comment"]').value || "";
+        if(!product || isNaN(amt) || !unit)
+          return alert("Complete all item fields.");
+
+        const key = db.ref('logs').push().key;
+        const out = { date, from, to, product, unit, costPerUnit: cpu, comment: cmnt, completed:false, amount:-amt };
+        const inLog = { date, from, to, product, unit, costPerUnit: cpu, comment: cmnt, completed:false, amount: amt };
+        const upd = {};
+        upd[`logs/${from}/${mk}/${key}`] = out;
+        upd[`logs/${to}/${mk}/${key}`]   = inLog;
         await db.ref().update(upd);
       }
-      $("items-container").innerHTML=""; $("date").valueAsDate=new Date(); $("from").selectedIndex=$("to").selectedIndex=0; addItem(); loadLogs();
+
+      // reset form
+      $("items-container").innerHTML = "";
+      $("date").valueAsDate = new Date();
+      $("from").selectedIndex = $("to").selectedIndex = 0;
+      addItem();
+
+      // reload logs for the chosen month
+      loadLogs();
     }
 
     // ----- Edit & save -----
     async function editLog(store,month,key,btn){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"); const d=snap.val(); if(!d) return alert("Not found.");
-      const p=btn.parentElement; p.innerHTML=
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
+      const d = snap.val();
+      if(!d) return alert("Not found.");
+
+      const p = btn.parentElement;
+      p.innerHTML =
         `<input id="e-date" type="date" value="${d.date}">`+
         `<input id="e-prod" placeholder="Product" value="${d.product}">`+
         `<input id="e-amt" type="number" value="${Math.abs(d.amount)}">`+
@@ -245,24 +268,54 @@
         `<button onclick="saveEdit('${d.from}','${d.to}','${month}','${key}')">Save</button>`;
     }
     async function saveEdit(from,to,month,key){
-      const dv=$("e-date").value, pv=$("e-prod").value, av=parseFloat($("e-amt").value), uv=$("e-unit").value,
-            cv=parseFloat($("e-cost").value)||null, cm=$("e-cmnt").value||"";
-      const out={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount:-av};
-      const inLog={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount:av};
-      const upd={}; upd[`logs/${from}/${month}/${key}`]=out; upd[`logs/${to}/${month}/${key}`]=inLog;
-      await db.ref().update(upd); loadLogs();
+      const dv = $("e-date").value;
+      const pv = $("e-prod").value;
+      const av = parseFloat($("e-amt").value);
+      const uv = $("e-unit").value;
+      const cv = parseFloat($("e-cost").value)||null;
+      const cm = $("e-cmnt").value||"";
+
+      const out = { date: dv, from, to, product: pv, unit: uv, costPerUnit: cv, comment: cm, completed:false, amount:-av };
+      const inLog = { date: dv, from, to, product: pv, unit: uv, costPerUnit: cv, comment: cm, completed:false, amount: av };
+      const upd = {};
+      upd[`logs/${from}/${month}/${key}`] = out;
+      upd[`logs/${to}/${month}/${key}`]   = inLog;
+      await db.ref().update(upd);
+      loadLogs();
     }
 
-    // ----- Invoice flows -----
-    async function getNextInvoiceNumber(){ const snap=await db.ref("invoiceCounter").once("value"); const cur=snap.exists()?snap.val():1000; const nxt=cur+1; await db.ref().update({invoiceCounter:nxt}); return nxt; }
-    async function openInvoice(store,month,key){ const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"); const log=snap.val(); if(!log) return alert("Not found.");
-      const inv=await getNextInvoiceNumber(); const {jsPDF}=window.jspdf; const doc=new jsPDF(); const amt=log.amount, sign=amt<0?"-":"+", tot=log.costPerUnit?(amt*log.costPerUnit).toFixed(2):"0.00";
-      doc.setFontSize(16).text(`Invoice #${inv}`,20,20); doc.setFontSize(12);
-      doc.text(`From: ${log.from}`,20,30); doc.text(`To:   ${log.to}`,20,40); doc.text(`Date: ${log.date}`,20,50);
-      doc.text(`Product: ${log.product}`,20,60); doc.text(`Amount: ${sign}${Math.abs(amt)} ${log.unit}`,20,70);
-      doc.text(`Cost/unit: $${log.costPerUnit||"0.00"}`,20,80); doc.text(`Total: $${tot}`,20,90);
-      doc.text(`Direction: ${amt<0?"Outgoing":"Incoming"}`,20,100); if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
-      const uri=doc.output("datauristring"); const win=window.open("","_blank"); win.document.write(`
+    // ----- Invoice flows & Excel export -----
+    async function getNextInvoiceNumber(){
+      const snap = await db.ref("invoiceCounter").once("value");
+      const cur = snap.exists() ? snap.val() : 1000;
+      const nxt = cur + 1;
+      await db.ref().update({ invoiceCounter: nxt });
+      return nxt;
+    }
+    async function openInvoice(store,month,key){
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
+      const log = snap.val();
+      if(!log) return alert("Not found.");
+
+      const inv = await getNextInvoiceNumber();
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const amt = log.amount, sign = amt<0?"-":"+", tot = log.costPerUnit?(amt*log.costPerUnit).toFixed(2):"0.00";
+      doc.setFontSize(16).text(`Invoice #${inv}`,20,20);
+      doc.setFontSize(12);
+      doc.text(`From: ${log.from}`,20,30);
+      doc.text(`To:   ${log.to}`,20,40);
+      doc.text(`Date: ${log.date}`,20,50);
+      doc.text(`Product: ${log.product}`,20,60);
+      doc.text(`Amount: ${sign}${Math.abs(amt)} ${log.unit}`,20,70);
+      doc.text(`Cost/unit: $${log.costPerUnit||"0.00"}`,20,80);
+      doc.text(`Total: $${tot}`,20,90);
+      doc.text(`Direction: ${amt<0?"Outgoing":"Incoming"}`,20,100);
+      if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
+
+      const uri = doc.output("datauristring");
+      const win = window.open("","_blank");
+      win.document.write(`
         <html><head><title>Invoice Preview</title><style>
           body{margin:0;font-family:Arial;} iframe{width:100%;height:90vh;border:none;}
           .buttons{padding:10px;display:flex;justify-content:space-around;background:#f0f0f0;}
@@ -277,25 +330,63 @@
         </body></html>
       `);
     }
-    async function sendInvoice(store,month,key,inv,uri){ const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"); const log=snap.val(); if(!log)return alert("Not found.");
-      const params={date:log.date, from_location:log.from, to_location:log.to, subject:`Aidan Food Transfer ${log.date} #${inv}`, invoice_number:inv, attachments:uri};
-      try{ await emailjs.send('service_gnviol9','template_6d3c34k',{...params, to_email:emailAddresses[log.from]});
-            await emailjs.send('service_gnviol9','template_6d3c34k',{...params, to_email:emailAddresses[log.to]});
-            const other=log.from===store?log.to:log.from; const upd={}; upd[`logs/${store}/${month}/${key}/completed`]=true; upd[`logs/${other}/${month}/${key}/completed`]=true;
-            await db.ref().update(upd); loadLogs(); alert("Invoices sent!");
-      }catch(e){ console.error(e); alert("Failed to send invoice."); }
+    async function sendInvoice(store,month,key,inv,uri){
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
+      const log = snap.val();
+      if(!log) return alert("Not found.");
+
+      const params = {
+        date: log.date,
+        from_location: log.from,
+        to_location: log.to,
+        subject: `Aidan Food Transfer ${log.date} #${inv}`,
+        invoice_number: inv,
+        attachments: uri
+      };
+      try {
+        await emailjs.send('service_gnviol9','template_6d3c34k',{...params, to_email: emailAddresses[log.from]});
+        await emailjs.send('service_gnviol9','template_6d3c34k',{...params, to_email: emailAddresses[log.to]});
+        const other = log.from===store? log.to : log.from;
+        const upd = {};
+        upd[`logs/${store}/${month}/${key}/completed`] = true;
+        upd[`logs/${other}/${month}/${key}/completed`] = true;
+        await db.ref().update(upd);
+        loadLogs();
+        alert("Invoices sent!");
+      } catch(e){
+        console.error(e);
+        alert("Failed to send invoice.");
+      }
     }
 
-    // ----- Month nav & Excel -----
-    function changeMonth(offset){ const [y,m]=selectedMonth.split("-").map(Number); const d=new Date(y,m-1+offset); selectedMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; loadLogs(); }
-    function exportExcel(){ db.ref("logs").once("value").then(snapshot=>{ const wb=XLSX.utils.book_new(); snapshot.forEach(storeSnap=>{ const rows=[]; storeSnap.forEach(monthSnap=>{ monthSnap.forEach(logSnap=>{ const l=logSnap.val(); const tot=l.costPerUnit?(l.amount*l.costPerUnit).toFixed(2):""; rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""]); }); }); const ws=XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows]); XLSX.utils.book_append_sheet(wb,ws,storeSnap.key.slice(0,31)); }); XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`); }); }
-
-    // ----- Export by date-range -----
+    function changeMonth(offset){
+      const [y,m] = selectedMonth.split("-").map(Number);
+      const d = new Date(y, m-1 + offset);
+      selectedMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      loadLogs();
+    }
+    function exportExcel(){
+      db.ref("logs").once("value").then(snapshot=>{
+        const wb = XLSX.utils.book_new();
+        snapshot.forEach(storeSnap=>{
+          const rows = [];
+          storeSnap.forEach(monthSnap=>{
+            monthSnap.forEach(logSnap=>{
+              const l = logSnap.val();
+              const tot = l.costPerUnit? (l.amount*l.costPerUnit).toFixed(2) : "";
+              rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""]);
+            });
+          });
+          const ws = XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows]);
+          XLSX.utils.book_append_sheet(wb, ws, storeSnap.key.slice(0,31));
+        });
+        XLSX.writeFile(wb, `FoodTransfers_${selectedMonth}.xlsx`);
+      });
+    }
     function exportDateRange(){
-      const start = $("report-start").value;
-      const end   = $("report-end").value;
-      if(!start||!end) return alert("Please select both start and end dates.");
-      const startD = new Date(start), endD = new Date(end);
+      const startD = new Date($("report-start").value);
+      const endD   = new Date($("report-end").value);
+      if(isNaN(startD) || isNaN(endD)) return alert("Please select both start and end dates.");
       db.ref("logs").once("value").then(snapshot=>{
         const wb = XLSX.utils.book_new();
         snapshot.forEach(storeSnap=>{
@@ -304,18 +395,18 @@
             monthSnap.forEach(logSnap=>{
               const l = logSnap.val();
               const d = new Date(l.date);
-              if(d >= startD && d <= endD){
-                const tot = l.costPerUnit ? (l.amount * l.costPerUnit).toFixed(2) : "";
-                rows.push([l.date, l.from, l.to, l.product, l.amount, l.unit, l.costPerUnit||"", tot, l.comment||""]);
+              if(d>=startD && d<=endD){
+                const tot = l.costPerUnit? (l.amount*l.costPerUnit).toFixed(2):"";
+                rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""]);
               }
             });
           });
           if(rows.length){
-            const ws = XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"], ...rows]);
+            const ws = XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows]);
             XLSX.utils.book_append_sheet(wb, ws, storeSnap.key.slice(0,31));
           }
         });
-        XLSX.writeFile(wb, `Report_${start}_${end}.xlsx`);
+        XLSX.writeFile(wb, `Report_${$("report-start").value}_${$("report-end").value}.xlsx`);
       });
     }
 
@@ -331,7 +422,7 @@
           alert("You have been logged out due to 10 minutes of inactivity.");
           setAdmin(false);
         }
-      }, 10 * 60 * 1000);
+      }, 10*60*1000);
     }
     ["mousemove","keydown","mousedown","touchstart","scroll"].forEach(evt=>{
       document.addEventListener(evt, resetIdleTimer, false);
