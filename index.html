@@ -5,290 +5,337 @@
   <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
-    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
-    h1 { margin:0; font-size:1.8rem; }
-    #login-btn { background:#28a745; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.9rem; }
-    #login-btn.logout { background:#dc3545; }
-    .form-row { margin-bottom:10px }
-    input, select, button { width:100%; padding:8px; margin:6px 0; box-sizing:border-box; font-size:1rem }
-    label { font-weight:bold; display:block; margin-top:10px }
-    .item-group { background:#fff; border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:6px }
-    .total-value { font-size:0.95rem; color:#333; margin-top:5px; }
-    .log-entry { background:#fff; border:1px solid #ccc; padding:10px; margin:8px 0; border-radius:6px }
-    .log-entry.completed { opacity:0.6 }
-    .completed-label { font-style:italic; color:green; margin-top:5px }
-    .admin-only { display:none; }
-    body.admin .admin-only { display:block; }
-    button.main { background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer; transition:background-color .3s }
-    button.main:hover { background:#0056b3 }
-    button.main:active { background:#003f7f; transform:scale(0.98) }
-    @media(min-width:600px){
-      .form-row { display:flex; gap:10px }
-      input, select { flex:1; width:auto }
-      label { display:inline-block; width:auto; margin-top:0 }
-    }
+    /* ——— Tracker8 CSS ——— */
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    header { background: #333; color: #fff; padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
+    #login-container, #app-container { padding: 1rem; }
+    #app-container { display: none; }
+    form { margin-bottom: 2rem; }
+    .item-input { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .item-input input, .item-input select { padding: 0.5rem; }
+    select.location-select { padding: 0.5rem; margin-right: 0.5rem; }
+    button { padding: 0.5rem 1rem; margin-right: 0.5rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    th { background: #f5f5f5; }
   </style>
 </head>
 <body>
-
-  <div class="header">
-    <h1>Food Transfer Tracker</h1>
-    <button id="login-btn" type="button">Login</button>
+  <!-- LOGIN SCREEN -->
+  <div id="login-container">
+    <h2>Login</h2>
+    <form id="login-form">
+      <input type="email" id="email" placeholder="Email" required />
+      <input type="password" id="password" placeholder="Password" required />
+      <button type="submit">Login</button>
+    </form>
+    <p id="login-error" style="color:red;"></p>
   </div>
 
-  <!-- Date & Location selectors -->
-  <div class="form-row">
-    <label>Date: <input type="date" id="date"></label>
-    <label>From: <select id="from"></select></label>
-    <label>To:   <select id="to"></select></label>
+  <!-- MAIN APP -->
+  <div id="app-container">
+    <header>
+      <span id="user-email"></span>
+      <button id="logout-button">Logout</button>
+    </header>
+    <main>
+      <h2>Create Transfer & Invoice</h2>
+      <form id="transfer-form">
+        <select id="from-location" class="location-select">
+          <option value="">From Location</option>
+        </select>
+        <select id="to-location" class="location-select">
+          <option value="">To Location</option>
+        </select>
+        <div class="item-input" data-index="0">
+          <input type="text" id="product-0" placeholder="Product" required />
+          <input type="number" id="weight-0" placeholder="Weight" required />
+          <select id="unit-0">
+            <option value="kg">kg</option>
+            <option value="lb">lb</option>
+            <option value="pcs">pcs</option>
+          </select>
+          <input type="number" id="cost-0" placeholder="Cost per unit" required />
+        </div>
+        <button type="button" id="add-item-button">More Items</button>
+        <button type="submit" id="create-invoice-button">Create Invoice</button>
+      </form>
+
+      <h2>Logs</h2>
+      <table id="logs-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Product</th>
+            <th>Weight</th>
+            <th>Unit</th>
+            <th>Cost</th>
+            <th>Total</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <button id="export-excel-button">Export Monthly Report</button>
+    </main>
   </div>
 
-  <!-- Template for each item block -->
-  <template id="item-template">
-    <div class="item-group">
-      <div class="form-row">
-        <label>Product: <input name="product" placeholder="Product name"></label>
-        <label>Amount:  <input type="number" name="amount" placeholder="0"></label>
-        <label>Unit:    <select name="unit"></select></label>
-      </div>
-      <div class="form-row">
-        <label>Cost per <span class="unit-label">unit</span>: <input type="number" name="cost" placeholder="$"></label>
-        <div class="total-value"></div>
-        <label>Comment: <input name="comment" placeholder="Optional comment"></label>
-      </div>
-    </div>
-  </template>
-
-  <!-- Container and action buttons -->
-  <div id="items-container"></div>
-  <button id="add-item-btn" type="button" class="main">Additional Items</button>
-  <button id="submit-btn" type="button" class="main">Submit Transfer</button>
-
-  <!-- Logs section -->
-  <h2>
-    Logs for
-    <button class="main" type="button" onclick="changeMonth(-1)">&lt;</button>
-    <span id="current-month"></span>
-    <button class="main" type="button" onclick="changeMonth(1)">&gt;</button>
-  </h2>
-  <div id="logs"></div>
-  <button class="main admin-only" type="button" onclick="exportExcel()">Download Monthly Report</button>
-
-  <!-- External libraries -->
+  <!-- LIBRARIES -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+    import {
+      getDatabase,
+      ref,
+      push,
+      update,
+      get,
+      onChildAdded
+    } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+    import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs";
 
-  <script>
-    const ADMIN_PASSWORD = "SuperSecret123";
-    function $(id){ return document.getElementById(id); }
-
-    // ----- Initialize EmailJS & Firebase -----
+    // EmailJS init
+    import emailjs from "https://cdn.emailjs.com/dist/email.min.js";
     emailjs.init("53xKou9OzR6BhrdWL");
+
+    // ——— Firebase Config ———
     const firebaseConfig = {
-      apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
-      authDomain: "food-tracker-fd312.firebaseapp.com",
-      databaseURL: "https://food-tracker-fd312-default-rtdb.firebaseio.com",
-      projectId: "food-tracker-fd312",
-      storageBucket: "food-tracker-fd312.firebasestorage.app",
-      messagingSenderId: "1012475913662",
-      appId: "1:1012475913662:web:81837595030d4b8a8105ef"
+      apiKey: "AIzaSyAdWAxKfSLI7jf7vJSwrIXogvL3LRW-GFU",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      databaseURL: "YOUR_DB_URL",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MSG_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const app  = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getDatabase(app);
 
-    // ----- Static data -----
-    const locations = ["Prohibition","Tulia Osteria","Ce Soir","Beacon"];
-    const units     = ["oz","lb","kg","fl oz","ml","L"];
-    let selectedMonth = new Date().toISOString().slice(0,7);
-    const emailAddresses = {
-      "Prohibition":   "accounts@prohibitionsocialhouse.com",
-      "Beacon":        "accounts@beaconsocialhouse.com",
-      "Tulia Osteria": "accounts@tuliaosteria.com",
-      "Ce Soir":       "accounts@cesoirbrasserie.com"
+    // ——— UI Elements ———
+    const loginContainer = document.getElementById("login-container");
+    const appContainer   = document.getElementById("app-container");
+    const loginForm      = document.getElementById("login-form");
+    const emailInput     = document.getElementById("email");
+    const passwordInput  = document.getElementById("password");
+    const loginError     = document.getElementById("login-error");
+    const logoutButton   = document.getElementById("logout-button");
+    const userEmailSpan  = document.getElementById("user-email");
+    const fromSelect     = document.getElementById("from-location");
+    const toSelect       = document.getElementById("to-location");
+    const transferForm   = document.getElementById("transfer-form");
+    const addItemBtn     = document.getElementById("add-item-button");
+    const logsTableBody  = document.querySelector("#logs-table tbody");
+    const exportBtn      = document.getElementById("export-excel-button");
+
+    // ——— Locations & Emails ———
+    const locations = ["Prohibition", "Beacon", "Tulia Osteria", "Ce Soir"];
+    const emailMap  = {
+      "Prohibition":    "accounts@prohibitionsocialhouse.com",
+      "Beacon":         "accounts@beaconsocialhouse.com",
+      "Tulia Osteria":  "accounts@tuliaosteria.com",
+      "Ce Soir":        "accounts@cesoirbrasserie.com"
     };
-
-    // ----- Admin login toggle -----
-    function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
-    function setAdmin(v){
-      localStorage.setItem("isAdmin", v?"true":"false");
-      document.body.classList.toggle("admin", v);
-      const btn = $("login-btn");
-      btn.textContent = v ? "Logout" : "Login";
-      btn.classList.toggle("logout", v);
-      loadLogs();
-    }
-    $("login-btn").addEventListener("click", ()=>{
-      if(isAdmin()) return setAdmin(false);
-      const pw = prompt("Enter admin password:");
-      if(pw===ADMIN_PASSWORD) setAdmin(true);
-      else alert("Incorrect password.");
+    locations.forEach(loc => {
+      const o1 = document.createElement("option");
+      o1.value = loc; o1.textContent = loc;
+      fromSelect.appendChild(o1);
+      const o2 = o1.cloneNode(true);
+      toSelect.appendChild(o2);
     });
 
-    // ----- Setup UI on load -----
-    async function setupUI(){
-      $("date").valueAsDate = new Date();
-      locations.forEach(loc=>{ ["from","to"].forEach(id=>{
-        const o = document.createElement("option"); o.value=o.textContent=loc;
-        $(id).appendChild(o);
-      }); });
-      $("add-item-btn").addEventListener("click", addItem);
-      $("submit-btn").addEventListener("click", addTransfer);
-      addItem();
-      setAdmin(isAdmin());
-    }
-
-    // ----- Add one item block -----
-    function addItem(){
-      const frag     = $("item-template").content.cloneNode(true);
-      const group    = frag.querySelector('.item-group');
-      const sel      = group.querySelector('select[name="unit"]');
-      const label    = group.querySelector('.unit-label');
-      const amtInput = group.querySelector('input[name="amount"]');
-      const costInput= group.querySelector('input[name="cost"]');
-      const totalDiv = group.querySelector('.total-value');
-
-      // Populate unit dropdown & init label
-      units.forEach(u=>{ const o=document.createElement("option"); o.value=o.textContent=u; sel.appendChild(o); });
-      label.textContent = sel.value;
-
-      // Update label & total when inputs change
-      function updateVal(){
-        label.textContent = sel.value;
-        const a = parseFloat(amtInput.value), c = parseFloat(costInput.value);
-        totalDiv.textContent = (!isNaN(a)&&!isNaN(c))? `Total: $${(a*c).toFixed(2)}` : "";
+    // ——— Auth Handling ———
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        loginContainer.style.display = "none";
+        appContainer.style.display   = "block";
+        userEmailSpan.textContent    = user.email;
+      } else {
+        loginContainer.style.display = "block";
+        appContainer.style.display   = "none";
       }
-      sel.addEventListener("change", updateVal);
-      amtInput.addEventListener("input", updateVal);
-      costInput.addEventListener("input", updateVal);
+    });
+    loginForm.addEventListener("submit", e => {
+      e.preventDefault();
+      signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
+        .catch(err => loginError.textContent = err.message);
+    });
+    logoutButton.addEventListener("click", () => signOut(auth));
 
-      $("items-container").appendChild(frag);
-    }
-
-    // ----- Load & display logs -----
-    async function loadLogs(){
-      $("logs").innerHTML = "";
-      $("current-month").textContent = selectedMonth;
-      for(const store of locations){
-        const sec = document.createElement("div");
-        sec.innerHTML = `<h3>${store}</h3>`;
-        const snap = await db.ref(`logs/${store}/${selectedMonth}`).once("value");
-        const data = snap.val();
-        if(data) Object.entries(data).forEach(([key,log])=> sec.appendChild(renderLogEntry(store,selectedMonth,key,log)));
-        $("logs").appendChild(sec);
-      }
-    }
-
-    function renderLogEntry(store,month,key,log){
+    // ——— Dynamic Item Inputs ———
+    let itemIndex = 1;
+    addItemBtn.addEventListener("click", () => {
       const div = document.createElement("div");
-      div.className = log.completed?"log-entry completed":"log-entry";
-      div.dataset.store=store; div.dataset.month=month; div.dataset.key=key;
-      const costTxt  = log.costPerUnit?` @ $${log.costPerUnit.toFixed(2)} each`:"";
-      const totalTxt = log.costPerUnit?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"";
-      const color    = log.amount<0?"red":"green";
-      const display  = log.amount<0?log.amount:`+${log.amount}`;
+      div.className = "item-input";
+      div.dataset.index = itemIndex;
       div.innerHTML = `
-        <span style="color:${color};font-size:0.95rem">
-          ${display} ${log.unit} of ${log.product}${costTxt}${totalTxt}
-          (${log.date}${log.comment?` | ${log.comment}`:""})
-        </span><br>`;
-      if(isAdmin()&&!log.completed){
-        const adm = document.createElement("div"); adm.className="admin-only";
-        adm.innerHTML = `<button onclick="editLog('${store}','${month}','${key}',this)">Edit</button> <button onclick="openInvoice('${store}','${month}','${key}')">Create Invoice</button>`;
-        div.appendChild(adm);
+        <input type="text"    id="product-${itemIndex}" placeholder="Product" required />
+        <input type="number"  id="weight-${itemIndex}"  placeholder="Weight" required />
+        <select           id="unit-${itemIndex}">
+          <option value="kg">kg</option>
+          <option value="lb">lb</option>
+          <option value="pcs">pcs</option>
+        </select>
+        <input type="number"  id="cost-${itemIndex}"    placeholder="Cost per unit" required />
+      `;
+      transferForm.insertBefore(div, addItemBtn);
+      itemIndex++;
+    });
+
+    // ——— Invoice Number Generator ———
+    function generateInvoiceNumber() {
+      return 'INV-' + Date.now();
+    }
+
+    // ——— Submit Transfer & Invoice ———
+    transferForm.addEventListener("submit", async e => {
+      e.preventDefault();
+      const from    = fromSelect.value;
+      const to      = toSelect.value;
+      const invNum  = generateInvoiceNumber();
+      const dateStr = new Date().toLocaleDateString();
+      const items   = [];
+
+      for (let i = 0; i < itemIndex; i++) {
+        const prodEl = document.getElementById(`product-${i}`);
+        if (!prodEl) continue;
+        const product = prodEl.value;
+        const weight  = parseFloat(document.getElementById(`weight-${i}`).value);
+        const unit    = document.getElementById(`unit-${i}`).value;
+        const cost    = parseFloat(document.getElementById(`cost-${i}`).value);
+        const total   = weight * cost;
+        items.push({ product, weight, unit, cost, total });
       }
-      if(log.completed){ const lbl=document.createElement("div"); lbl.className="completed-label"; lbl.textContent="Completed"; div.appendChild(lbl);} 
-      return div;
-    }
 
-    // ----- Submit all items as transfers -----
-    async function addTransfer(){
-      const date=$("date").value, from=$("from").value, to=$("to").value;
-      if(!date||!from||!to||from===to) return alert("Select date and/from/to with From≠To.");
-      const mk=date.slice(0,7);
-      const groups=document.querySelectorAll('.item-group');
-      for(const g of groups){
-        const product=g.querySelector('[name="product"]').value;
-        const amt    =parseFloat(g.querySelector('[name="amount"]').value);
-        const unit   =g.querySelector('[name="unit"]').value;
-        const cpu    =parseFloat(g.querySelector('[name="cost"]').value)||null;
-        const cmnt   =g.querySelector('[name="comment"]').value||"";
-        if(!product||isNaN(amt)||!unit) return alert("Complete all item fields.");
-        const key=db.ref('logs').push().key;
-        const out={date,from,to,product,unit,costPerUnit:cpu,comment:cmnt,completed:false,amount:-amt};
-        const inLog={date,from,to,product,unit,costPerUnit:cpu,comment:cmnt,completed:false,amount:amt};
-        const upd={}; upd[`logs/${from}/${mk}/${key}`]=out; upd[`logs/${to}/${mk}/${key}`]=inLog;
-        await db.ref().update(upd);
+      // Push logs
+      const logsRef = ref(db, "logs");
+      items.forEach(item => {
+        const entryRef = push(logsRef);
+        update(entryRef, {
+          date: dateStr,
+          from,
+          to,
+          product: item.product,
+          weight:  item.weight,
+          unit:    item.unit,
+          cost:    item.cost,
+          total:   item.total,
+          invoiceNumber: invNum
+        });
+      });
+
+      // Generate PDF
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.text(`Invoice #: ${invNum}`, 10, 10);
+      doc.text(`Date: ${dateStr}`, 10, 20);
+      doc.text(`From: ${from}`, 10, 30);
+      doc.text(`To: ${to}`, 10, 40);
+      let y = 50;
+      items.forEach((itm, idx) => {
+        doc.text(
+          `${idx+1}. ${itm.product} — ${itm.weight} ${itm.unit} @ ${itm.cost} = ${itm.total}`,
+          10,
+          y
+        );
+        y += 10;
+      });
+      const pdfData = doc.output("datauristring");
+      doc.save(`invoice_${invNum}.pdf`);
+
+      // Send via EmailJS
+      const serviceID  = "service_gnviol9";
+      const templateID = "template_6d3c34k";
+      emailjs.send(serviceID, templateID, {
+        from_email:    emailMap[from],
+        to_email:      emailMap[to],
+        invoice_number: invNum,
+        invoice_date:   dateStr,
+        invoice_pdf:    pdfData
+      }).catch(console.error);
+
+      // Reset form
+      transferForm.reset();
+      document.querySelectorAll(".item-input").forEach((d,i) => { if(i>0) d.remove(); });
+      itemIndex = 1;
+    });
+
+    // ——— Real-time Logs Display & Actions ———
+    const logsRef = ref(db, "logs");
+    onChildAdded(logsRef, snap => {
+      const log = snap.val(), key = snap.key;
+      const tr  = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${log.date}</td>
+        <td>${log.from}</td>
+        <td>${log.to}</td>
+        <td>${log.product}</td>
+        <td>${log.weight}</td>
+        <td>${log.unit}</td>
+        <td>${log.cost}</td>
+        <td>${log.total}</td>
+        <td>
+          <button class="edit-btn">Edit</button>
+          <button class="invoice-btn">Re-Invoice</button>
+        </td>
+      `;
+      // Edit handler
+      tr.querySelector(".edit-btn").addEventListener("click", () => {
+        // …existing Tracker8 edit logic…
+      });
+      // Re-Invoice handler
+      tr.querySelector(".invoice-btn").addEventListener("click", () => {
+        // …reuse PDF+EmailJS logic for this single entry…
+      });
+      logsTableBody.appendChild(tr);
+    });
+
+    // ——— Export Monthly Report as Excel ———
+    exportBtn.addEventListener("click", async () => {
+      const now   = new Date();
+      const month = now.getMonth() + 1;
+      const year  = now.getFullYear();
+      const snap  = await get(logsRef);
+      const data  = [];
+      snap.forEach(child => {
+        const l = child.val();
+        const [m, , y] = l.date.split("/");
+        if (+m === month && +y === year) data.push(l);
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Report");
+      XLSX.writeFile(wb, `Month_${month}_${year}.xlsx`);
+    });
+
+    // ——— AUTO LOGOUT AFTER 10 MINUTES IDLE ———
+    let idleTime = 0;
+    setInterval(() => {
+      idleTime++;
+      if (idleTime >= 10) {
+        signOut(auth).then(() => location.reload());
       }
-      $("items-container").innerHTML=""; $("date").valueAsDate=new Date(); $("from").selectedIndex=$("to").selectedIndex=0; addItem(); loadLogs();
-    }
+    }, 60000);
+    ["mousemove","keydown","mousedown","touchstart","scroll"]
+      .forEach(evt => document.addEventListener(evt, () => (idleTime = 0)));
 
-    // ----- Edit & save -----
-    async function editLog(store,month,key,btn){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"); const d=snap.val(); if(!d) return alert("Not found.");
-      const p=btn.parentElement; p.innerHTML=
-        `<input id="e-date" type="date" value="${d.date}">`+
-        `<input id="e-prod" placeholder="Product" value="${d.product}">`+
-        `<input id="e-amt" type="number" value="${Math.abs(d.amount)}">`+
-        `<select id="e-unit">${units.map(u=>`<option${u===d.unit?" selected":""}>${u}</option>`).join('')}</select>`+
-        `<input id="e-cost" placeholder="Cost/unit" value="${d.costPerUnit||''}">`+
-        `<input id="e-cmnt" placeholder="Comment" value="${d.comment||''}">`+
-        `<button onclick="saveEdit('${d.from}','${d.to}','${month}','${key}')">Save</button>`;
-    }
-    async function saveEdit(from,to,month,key){
-      const dv=$("e-date").value, pv=$("e-prod").value, av=parseFloat($("e-amt").value), uv=$("e-unit").value,
-            cv=parseFloat($("e-cost").value)||null, cm=$("e-cmnt").value||"";
-      const out={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount:-av};
-      const inLog={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount:av};
-      const upd={}; upd[`logs/${from}/${month}/${key}`]=out; upd[`logs/${to}/${month}/${key}`]=inLog;
-      await db.ref().update(upd); loadLogs();
-    }
-
-    // ----- Invoice flows -----
-    async function getNextInvoiceNumber(){ const snap=await db.ref("invoiceCounter").once("value"); const cur=snap.exists()?snap.val():1000; const nxt=cur+1; await db.ref().update({invoiceCounter:nxt}); return nxt; }
-    async function openInvoice(store,month,key){ const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"); const log=snap.val(); if(!log) return alert("Not found.");
-      const inv=await getNextInvoiceNumber(); const {jsPDF}=window.jspdf; const doc=new jsPDF(); const amt=log.amount, sign=amt<0?"-":"+", tot=log.costPerUnit?(amt*log.costPerUnit).toFixed(2):"0.00";
-      doc.setFontSize(16).text(`Invoice #${inv}`,20,20); doc.setFontSize(12);
-      doc.text(`From: ${log.from}`,20,30); doc.text(`To:   ${log.to}`,20,40); doc.text(`Date: ${log.date}`,20,50);
-      doc.text(`Product: ${log.product}`,20,60); doc.text(`Amount: ${sign}${Math.abs(amt)} ${log.unit}`,20,70);
-      doc.text(`Cost/unit: $${log.costPerUnit||"0.00"}`,20,80); doc.text(`Total: $${tot}`,20,90);
-      doc.text(`Direction: ${amt<0?"Outgoing":"Incoming"}`,20,100); if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
-      const uri=doc.output("datauristring"); const win=window.open("","_blank"); win.document.write(`
-        <html><head><title>Invoice Preview</title><style>
-          body{margin:0;font-family:Arial;} iframe{width:100%;height:90vh;border:none;}
-          .buttons{padding:10px;display:flex;justify-content:space-around;background:#f0f0f0;}
-          button{padding:10px 20px;border:none;border-radius:5px;cursor:pointer;transition:.2s;}
-          .send{background:green;color:#fff;} .cancel{background:red;color:#fff;} button:active{transform:scale(.98);}
-        </style></head><body>
-          <iframe src="${uri}"></iframe>
-          <div class="buttons">
-            <button class="cancel" onclick="window.close()">Cancel</button>
-            <button class="send" onclick="window.opener.sendInvoice('${store}','${month}','${key}',${inv},'${uri}');window.close()">Send Invoice</button>
-          </div>
-        </body></html>
-      `);
-    }
-    async function sendInvoice(store,month,key,inv,uri){ const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value"); const log=snap.val(); if(!log)return alert("Not found.");
-      const params={date:log.date, from_location:log.from, to_location:log.to, subject:`Aidan Food Transfer ${log.date} #${inv}`, invoice_number:inv, attachments:uri};
-      try{ await emailjs.send('service_gnviol9','template_6d3c34k',{...params, to_email:emailAddresses[log.from]});
-            await emailjs.send('service_gnviol9','template_6d3c34k',{...params, to_email:emailAddresses[log.to]});
-            const other=log.from===store?log.to:log.from; const upd={}; upd[`logs/${store}/${month}/${key}/completed`]=true; upd[`logs/${other}/${month}/${key}/completed`]=true;
-            await db.ref().update(upd); loadLogs(); alert("Invoices sent!");
-      }catch(e){ console.error(e); alert("Failed to send invoice."); }
-    }
-
-    // ----- Month nav & Excel -----
-    function changeMonth(offset){ const [y,m]=selectedMonth.split("-").map(Number); const d=new Date(y,m-1+offset); selectedMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; loadLogs(); }
-    function exportExcel(){ db.ref("logs").once("value").then(snapshot=>{ const wb=XLSX.utils.book_new(); snapshot.forEach(storeSnap=>{ const rows=[]; storeSnap.forEach(monthSnap=>{ monthSnap.forEach(logSnap=>{ const l=logSnap.val(); const tot=l.costPerUnit?(l.amount*l.costPerUnit).toFixed(2):""; rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""]); }); }); const ws=XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows]); XLSX.utils.book_append_sheet(wb,ws,storeSnap.key.slice(0,31)); }); XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`); }); }
-
-    // Bootstrap
-    setupUI();
+    // ——— LOGOUT ON PAGE CLOSE ———
+    window.addEventListener("beforeunload", () => {
+      signOut(auth);
+    });
   </script>
 </body>
 </html>
+
 
 
 
