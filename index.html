@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9; }
@@ -68,12 +68,13 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- EmailJS v3 SDK -->
   <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
 
   <script>
-    // CONFIG
+    // — CONFIGURATION —
     const ADMIN_PASSWORD   = "SuperSecret123";
-    const EMAILJS_PUBLIC   = "53xKou9OzR6BhrdWL";
+    const EMAILJS_PUBLIC   = "53xKou9OzR6BhrdWL";      // <-- your public key
     const EMAILJS_SERVICE  = "service_gnviol9";
     const EMAILJS_TEMPLATE = "template_6d3c34k";
     emailjs.init(EMAILJS_PUBLIC);
@@ -102,12 +103,9 @@
       "Ce Soir":       "accounts@cesoirbrasserie.com"
     };
 
-    // Temp map of PDF URIs by invoice #
-    window._pdfMap = {};
-
     function $(id){ return document.getElementById(id); }
 
-    // Admin login
+    // Admin login toggle
     function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
     function setAdmin(on){
       localStorage.setItem("isAdmin", on?"true":"false");
@@ -124,7 +122,7 @@
       else alert("Incorrect password.");
     });
 
-    // UI setup
+    // Build UI, then load logs
     async function setupUI(){
       locations.forEach(loc=>{
         ["from","to"].forEach(id=>{
@@ -158,9 +156,9 @@
     async function getNextInvoice(){
       const snap = await db.ref("invoiceCounter").once("value");
       const cur  = snap.exists()?snap.val():1000;
-      const next = cur+1;
-      await db.ref().update({invoiceCounter: next});
-      return next;
+      const nxt  = cur+1;
+      await db.ref().update({ invoiceCounter:nxt });
+      return nxt;
     }
 
     function renderLogEntry(store,month,key,log){
@@ -235,7 +233,7 @@
     }
 
     async function editLog(store,month,key,btn){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value`);
       const d    = snap.val(); if(!d) return alert("Not found.");
       const p    = btn.parentElement;
       p.innerHTML= `
@@ -288,9 +286,8 @@
       doc.text(`Direction: ${amt<0?'Outgoing':'Incoming'}`,20,100);
       if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
 
+      // open preview
       const uri = doc.output('datauristring');
-      window._pdfMap[inv] = uri;
-
       const win = window.open();
       win.document.write(`
         <html><head><title>Preview</title><style>
@@ -312,48 +309,39 @@
     }
 
     async function sendInvoice(store,month,key,inv){
-      const snap       = await db.ref(`logs/${store}/${month}/${key}`).once("value");
-      const log        = snap.val(); if(!log) return alert("Not found.");
-      const pdfDataUri = window._pdfMap[inv];
-      const base64pdf  = pdfDataUri.split(',')[1];
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
+      const log  = snap.val(); if(!log) return alert("Not found.");
 
-      // common params
       const params = {
         invoice_number: inv,
         date:           log.date,
         from_location:  log.from,
-        to_location:    log.to
+        to_location:    log.to,
+        to_email:       emailAddresses[log.from]
       };
-
-      const attachments = [{
-        name: `Invoice_${inv}.pdf`,
-        data: base64pdf
-      }];
 
       // send to sender
       await emailjs.send(
         EMAILJS_SERVICE,
         EMAILJS_TEMPLATE,
-        { ...params, to_email: emailAddresses[log.from] },
-        { attachments }
+        params
       );
-
-      // send to receiver
+      // then to receiver
+      params.to_email = emailAddresses[log.to];
       await emailjs.send(
         EMAILJS_SERVICE,
         EMAILJS_TEMPLATE,
-        { ...params, to_email: emailAddresses[log.to] },
-        { attachments }
+        params
       );
 
       // mark completed
-      const other = log.from===store? log.to : log.from;
+      const other = log.from===store? log.to:log.from;
       const u = {};
       u[`logs/${store}/${month}/${key}/completed`] = true;
       u[`logs/${other}/${month}/${key}/completed`] = true;
       await db.ref().update(u);
       await loadLogs();
-      alert("Invoices sent with PDF attached!");
+      alert("Invoices sent!");
     }
 
     function changeMonth(offset){
@@ -367,7 +355,7 @@
       db.ref("logs").once("value").then(snapshot=>{
         const wb = XLSX.utils.book_new();
         snapshot.forEach(storeSnap=>{
-          const name = storeSnap.key, rows = [];
+          const name = storeSnap.key, rows=[];
           storeSnap.forEach(monthSnap=>{
             monthSnap.forEach(lSnap=>{
               const l = lSnap.val();
@@ -375,20 +363,18 @@
               rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||'',tot,l.comment||'']);
             });
           });
-          const ws = XLSX.utils.aoa_to_sheet([
-            ['Date','From','To','Product','Amount','Unit','Cost','Total','Comment'], ...rows
-          ]);
-          XLSX.utils.book_append_sheet(wb, ws, name.slice(0,31));
+          const ws = XLSX.utils.aoa_to_sheet([['Date','From','To','Product','Amount','Unit','Cost','Total','Comment'],...rows]);
+          XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));
         });
-        XLSX.writeFile(wb, `FoodTransfers_${selectedMonth}.xlsx`);
+        XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`);
       });
     }
 
-    // expose and init
-    window.setupUI = setupUI;
+    // expose & bootstrap
+    window.setupUI     = setupUI;
     window.addTransfer = addTransfer;
-    window.editLog = editLog;
-    window.saveEdit = saveEdit;
+    window.editLog     = editLog;
+    window.saveEdit    = saveEdit;
     window.openInvoice = openInvoice;
     window.sendInvoice = sendInvoice;
     window.changeMonth = changeMonth;
@@ -398,6 +384,7 @@
   </script>
 </body>
 </html>
+
 
 
 
