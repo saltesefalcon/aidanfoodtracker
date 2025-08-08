@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <style>
     body { font-family:Arial; max-width:700px; margin:auto; padding:15px; background:#f9f9f9; }
@@ -103,12 +103,12 @@
       "Ce Soir":       "accounts@cesoirbrasserie.com"
     };
 
-    // keep PDF URIs until send
+    // store Base64 URIs temporarily
     window._pdfMap = {};
 
     function $(id){ return document.getElementById(id); }
 
-    // admin toggle
+    // Admin login toggle
     function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
     function setAdmin(on){
       localStorage.setItem("isAdmin", on?"true":"false");
@@ -125,7 +125,7 @@
       else alert("Wrong password");
     };
 
-    // build UI & fetch logs
+    // Build UI & load logs
     async function setupUI(){
       locations.forEach(loc=>{
         ["from","to"].forEach(id=>{
@@ -198,9 +198,7 @@
         sec.innerHTML=`<h3>${s}</h3>`;
         const snap = await db.ref(`logs/${s}/${selectedMonth}`).once("value");
         const data = snap.val()||{};
-        for(const [k,l] of Object.entries(data)){
-          sec.appendChild(renderLog(s,selectedMonth,k,l));
-        }
+        for(const [k,l] of Object.entries(data)) sec.appendChild(renderLog(s,selectedMonth,k,l));
         $("logs").appendChild(sec);
       }
     }
@@ -217,10 +215,9 @@
       }
       const mk=d.slice(0,7), key=db.ref("logs").push().key;
       const out={date:d,from,to,product:prod,unit,costPerUnit:cpu,comment:cm,completed:false,amount:-amt};
-      const inn={...out,amount:amt};
-      const upd={};
+      const inn={...out,amount:amt}, upd={};
       upd[`logs/${from}/${mk}/${key}`]=out;
-      upd[`logs/${to}/${mk}/${key}`]=inn;
+      upd[`logs/${to}/${mk}/${key}`]  =inn;
       await db.ref().update(upd);
       ["product","amount","cost","comment"].forEach(id=>$(id).value="");
       $("unit").selectedIndex=0; updateTotal();
@@ -228,7 +225,7 @@
     }
 
     async function editLog(store,month,key,btn){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value`);
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value");
       const d=snap.val(); if(!d) return alert("Not found");
       const p=btn.parentElement;
       p.innerHTML=`
@@ -249,39 +246,44 @@
             av=parseFloat($("e-amt").value), uv=$("e-unit").value,
             cv=parseFloat($("e-cost").value)||0, cm=$("e-cmnt").value.trim();
       const out={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount:-av};
-      const inn={...out,amount:av};
-      const upd={};
+      const inn={...out,amount:av}, upd={};
       upd[`logs/${from}/${month}/${key}`]=out;
-      upd[`logs/${to}/${month}/${key}`]=inn;
+      upd[`logs/${to}/${month}/${key}`]  =inn;
       await db.ref().update(upd);
       await loadLogs();
     }
 
-    async function openInvoice(store,month,key){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value");
-      const log=snap.val(); if(!log) return alert("Not found");
-      const inv=await getNextInvoice(), { jsPDF }=window.jspdf, doc=new jsPDF();
-      const amt=log.amount, sign=amt<0?"-":"+",
-            tot=log.costPerUnit?(amt*log.costPerUnit).toFixed(2):"0.00";
-      doc.setFontSize(16).text(`Invoice #${inv}`,20,20);
+    // — FIXED openInvoice/sendInvoice —
+    async function openInvoice(store, month, key){
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once('value');
+      const log  = snap.val(); if(!log) return alert('Not found.');
+
+      const inv = await getNextInvoice(),
+            { jsPDF } = window.jspdf,
+            doc = new jsPDF();
+
+      const amt = log.amount,
+            sign = amt < 0 ? '-' : '+',
+            tot  = log.costPerUnit ? (amt*log.costPerUnit).toFixed(2) : '0.00';
+
+      doc.setFontSize(16).text(`Invoice #${inv}`, 20, 20);
       doc.setFontSize(12);
-      doc.text(`From: ${log.from}`,20,30);
-      doc.text(`To:   ${log.to}`,20,40);
-      doc.text(`Date: ${log.date}`,20,50);
-      doc.text(`Product: ${log.product}`,20,60);
-      doc.text(`Amount: ${sign}${Math.abs(amt)} ${log.unit}`,20,70);
-      doc.text(`Cost/unit: $${log.costPerUnit||"0.00"}`,20,80);
-      doc.text(`Total: $${tot}`,20,90);
-      doc.text(`Direction: ${amt<0?"Outgoing":"Incoming"}`,20,100);
-      if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
+      doc.text(`From: ${log.from}`, 20, 30);
+      doc.text(`To:   ${log.to}`, 20, 40);
+      doc.text(`Date: ${log.date}`, 20, 50);
+      doc.text(`Product: ${log.product}`, 20, 60);
+      doc.text(`Amount: ${sign}${Math.abs(amt)} ${log.unit}`, 20, 70);
+      doc.text(`Cost/unit: $${log.costPerUnit||'0.00'}`, 20, 80);
+      doc.text(`Total: $${tot}`, 20, 90);
+      doc.text(`Direction: ${amt<0?'Outgoing':'Incoming'}`, 20, 100);
+      if(log.comment) doc.text(`Comment: ${log.comment}`, 20, 110);
 
-      // store Base64 URI
-      const uri=doc.output("datauristring");
-      window._pdfMap[inv]=uri;
+      const uri = doc.output('datauristring');
+      window._pdfMap[inv] = uri;
 
-      const win=window.open();
+      const win = window.open('');
       win.document.write(`
-        <html><head><title>Preview</title><style>
+        <html><head><title>Invoice #${inv}</title><style>
           body{margin:0;font-family:Arial;}iframe{width:100%;height:90vh;border:none;}
           .buttons{display:flex;justify-content:space-around;padding:10px;background:#f0f0f0;}
           button{padding:10px 20px;border:none;border-radius:5px;cursor:pointer;}
@@ -299,14 +301,13 @@
       `);
     }
 
-    async function sendInvoice(store,month,key,inv){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value");
-      const log=snap.val(); if(!log) return alert("Not found");
+    async function sendInvoice(store, month, key, inv){
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once('value');
+      const log  = snap.val(); if(!log) return alert('Not found.');
 
-      // extract Base64
-      const uri=window._pdfMap[inv], base64=uri.split(',')[1];
+      const uri    = window._pdfMap[inv],
+            base64 = uri.split(',')[1];
 
-      // common params
       const params = {
         invoice_number: inv,
         date:           log.date,
@@ -314,47 +315,48 @@
         to_location:    log.to
       };
 
-      // attachments array for EmailJS
-      const attachments=[{
+      const attachments = [{
         name: `Invoice_${inv}.pdf`,
         data: base64
       }];
 
-      // send to sender
+      // to sending store
       await emailjs.send(
         EMAILJS_SERVICE,
         EMAILJS_TEMPLATE,
-        {...params, to_email: emailAddresses[log.from]},
+        { ...params, to_email: emailAddresses[log.from] },
         { attachments }
       );
-
-      // send to receiver
+      // to receiving store
       await emailjs.send(
         EMAILJS_SERVICE,
         EMAILJS_TEMPLATE,
-        {...params, to_email: emailAddresses[log.to]},
+        { ...params, to_email: emailAddresses[log.to] },
         { attachments }
       );
 
       // mark completed
-      const other=log.from===store?log.to:log.from, u={};
-      u[`logs/${store}/${month}/${key}/completed`]=true;
-      u[`logs/${other}/${month}/${key}/completed`]=true;
+      const other = log.from===store?log.to:log.from,
+            u = {};
+      u[`logs/${store}/${month}/${key}/completed`] = true;
+      u[`logs/${other}/${month}/${key}/completed`] = true;
       await db.ref().update(u);
+
       await loadLogs();
-      alert("Invoices sent with PDF!");
+      alert('Invoices sent with PDF!');
     }
+    // — end fixes —
 
     function changeMonth(o){
       const [y,m]=selectedMonth.split('-').map(Number),
             d=new Date(y,m-1+o);
-      selectedMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      selectedMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       loadLogs();
     }
 
     function exportExcel(){
       db.ref("logs").once("value").then(snap=>{
-        const wb=XLSX.utils.book_new();
+        const wb = XLSX.utils.book_new();
         snap.forEach(storeSnap=>{
           const name=storeSnap.key, rows=[];
           storeSnap.forEach(monthSnap=>{
@@ -364,7 +366,7 @@
               rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""]);
             });
           });
-          const ws=XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows]);
+          const ws = XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows]);
           XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));
         });
         XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`);
@@ -380,10 +382,12 @@
     window.sendInvoice = sendInvoice;
     window.changeMonth = changeMonth;
     window.exportExcel = exportExcel;
+
     setupUI();
   </script>
 </body>
 </html>
+
 
 
 
