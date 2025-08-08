@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -251,7 +251,7 @@
 
     // Edit & save
     async function editLog(store,month,key,btn){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value`);
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
       const d    = snap.val(); if(!d) return alert("Not found.");
       const p    = btn.parentElement;
       p.innerHTML = `
@@ -437,4 +437,5 @@
   </script>
 </body>
 </html>
+
 
