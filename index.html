@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -124,7 +124,7 @@
 
     // ----- Static data -----
     const locations = ["Prohibition","Tulia Osteria","Ce Soir","Beacon"];
-    const units     = ["oz","lb","kg","fl oz","ml","L","piece"];
+    const units     = ["oz","lb","kg","fl oz","ml","L"];
     let selectedMonth = new Date().toISOString().slice(0,7);
     const emailAddresses = {
       "Prohibition":   "accounts@prohibitionsocialhouse.com",
@@ -168,7 +168,7 @@
       $("invoice-cancel").onclick = ()=> { $("invoice-modal").style.display = "none"; };
       $("invoice-send").onclick   = ()=> {
         const p = window.currentInvoice;
-        if(p) sendInvoice(p.store,p.month,p.key,p.inv,p.uri);
+        if(p) sendInvoice(p.store,p.month,p.key,p.inv);
         $("invoice-modal").style.display = "none";
       };
     }
@@ -319,27 +319,51 @@
       const blobUri = doc.output("bloburi");
       $("invoice-iframe").src = blobUri;
       $("invoice-modal").style.display = "block";
-      window.currentInvoice = { store, month, key, inv, uri: blobUri };
+      window.currentInvoice = { store, month, key, inv };
     }
-    async function sendInvoice(store,month,key,inv,uri){
+    async function sendInvoice(store,month,key,inv){
+      // fetch log data again
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value"), log=snap.val();
       if(!log) return alert("Not found.");
-      const params = {
+
+      // regenerate PDF for EmailJS as Base64 data URI
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const amt=log.amount, sign=amt<0?"-":"+", tot=log.costPerUnit?(amt*log.costPerUnit).toFixed(2):"0.00";
+      doc.setFontSize(16).text(`Invoice #${inv}`,20,20);
+      doc.setFontSize(12);
+      ["From: "+log.from, "To:   "+log.to, "Date: "+log.date].forEach((t,i)=>doc.text(t,20,30+10*i));
+      ["Product: "+log.product,
+       "Amount: "+sign+Math.abs(amt)+" "+log.unit,
+       "Cost/unit: $"+(log.costPerUnit||"0.00"),
+       "Total: $"+tot,
+       "Direction: "+(amt<0?"Outgoing":"Incoming"),
+       log.comment?("Comment: "+log.comment):""]
+      .filter(t=>t).forEach((t,i)=>doc.text(t,20,60+10*i));
+
+      const pdfDataUrl = doc.output('dataurlstring');
+
+      const paramsBase = {
         date: log.date,
         from_location: log.from,
         to_location: log.to,
         subject: `Aidan Food Transfer ${log.date} #${inv}`,
         invoice_number: inv,
-        attachments: uri
+        attachments: pdfDataUrl
       };
+
       try{
-        await emailjs.send('service_gnviol9','template_6d3c34k',{...params, to_email: emailAddresses[log.from]});
-        await emailjs.send('service_gnviol9','template_6d3c34k',{...params, to_email: emailAddresses[log.to]});
+        // send to both locations
+        await emailjs.send('service_gnviol9','template_6d3c34k',{...paramsBase, to_email: emailAddresses[log.from]});
+        await emailjs.send('service_gnviol9','template_6d3c34k',{...paramsBase, to_email: emailAddresses[log.to]});
+
+        // mark completed
         const other = log.from===store?log.to:log.from;
         const upd={};
         upd[`logs/${store}/${month}/${key}/completed`] = true;
         upd[`logs/${other}/${month}/${key}/completed`] = true;
         await db.ref().update(upd);
+
         loadLogs();
         alert("Invoices sent!");
       }catch(e){
@@ -424,6 +448,5 @@
   </script>
 </body>
 </html>
-
 
 
