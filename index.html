@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Transfer Tracker</title>
+  <title>Food Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -347,13 +347,17 @@
       // Extract base64 PDF (strip header)
       const base64pdf = uri.split(',')[1];
 
+      // Build attachments array for EmailJS dynamic attachments
+      const attachments = [
+        { name: `Invoice_${inv}.pdf`, data: base64pdf }
+      ];
+
       const commonParams = {
-        date:               log.date,
-        from_location:      log.from,
-        to_location:        log.to,
-        subject:            `Aidan Food Transfer ${log.date} #${inv}`,
-        invoice_attachment: base64pdf,
-        invoice_filename:   `Invoice_${inv}.pdf`
+        date:          log.date,
+        from_location: log.from,
+        to_location:   log.to,
+        subject:       `Aidan Food Transfer ${log.date} #${inv}`,
+        attachments    // matches your Parameter Name in EmailJS
       };
 
       try {
@@ -437,5 +441,6 @@
   </script>
 </body>
 </html>
+
 
 
