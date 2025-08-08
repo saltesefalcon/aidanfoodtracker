@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9; }
@@ -74,7 +74,7 @@
   <script>
     // — CONFIGURATION —
     const ADMIN_PASSWORD   = "SuperSecret123";
-    const EMAILJS_PUBLIC   = "53xKou9OzR6BhrdWL";      // <-- your public key
+    const EMAILJS_PUBLIC   = "53xKou9OzR6BhrdWL";      // ← your EmailJS Public Key (User ID)
     const EMAILJS_SERVICE  = "service_gnviol9";
     const EMAILJS_TEMPLATE = "template_6d3c34k";
     emailjs.init(EMAILJS_PUBLIC);
@@ -102,6 +102,9 @@
       "Tulia Osteria": "accounts@tuliaosteria.com",
       "Ce Soir":       "accounts@cesoirbrasserie.com"
     };
+
+    // temp store PDF URIs by invoice #
+    window._pdfMap = {};
 
     function $(id){ return document.getElementById(id); }
 
@@ -233,7 +236,7 @@
     }
 
     async function editLog(store,month,key,btn){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value`);
+      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
       const d    = snap.val(); if(!d) return alert("Not found.");
       const p    = btn.parentElement;
       p.innerHTML= `
@@ -286,8 +289,10 @@
       doc.text(`Direction: ${amt<0?'Outgoing':'Incoming'}`,20,100);
       if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
 
-      // open preview
+      // store PDF URI & preview
       const uri = doc.output('datauristring');
+      window._pdfMap[inv] = uri;
+
       const win = window.open();
       win.document.write(`
         <html><head><title>Preview</title><style>
@@ -310,38 +315,51 @@
 
     async function sendInvoice(store,month,key,inv){
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
-      const log  = snap.val(); if(!log) return alert("Not found.");
+      const log  = snap.val(); if(!log) return alert("Not found.");     
 
+      // extract Base64 PDF
+      const uri      = window._pdfMap[inv];
+      const base64pdf= uri.split(',')[1];
+
+      // common template params
       const params = {
         invoice_number: inv,
         date:           log.date,
         from_location:  log.from,
-        to_location:    log.to,
-        to_email:       emailAddresses[log.from]
+        to_location:    log.to
       };
+
+      // attachments array (Parameter Name = "attachments")
+      const attachments = [{
+        name: `Invoice_${inv}.pdf`,
+        data: base64pdf
+      }];
 
       // send to sender
       await emailjs.send(
         EMAILJS_SERVICE,
         EMAILJS_TEMPLATE,
-        params
+        { ...params, to_email: emailAddresses[log.from] },
+        { attachments }
       );
-      // then to receiver
-      params.to_email = emailAddresses[log.to];
+
+      // send to receiver
       await emailjs.send(
         EMAILJS_SERVICE,
         EMAILJS_TEMPLATE,
-        params
+        { ...params, to_email: emailAddresses[log.to] },
+        { attachments }
       );
 
-      // mark completed
-      const other = log.from===store? log.to:log.from;
+      // mark completed in both logs
+      const other = log.from===store ? log.to : log.from;
       const u = {};
       u[`logs/${store}/${month}/${key}/completed`] = true;
       u[`logs/${other}/${month}/${key}/completed`] = true;
       await db.ref().update(u);
+
       await loadLogs();
-      alert("Invoices sent!");
+      alert("Invoices sent (PDF attached)!");
     }
 
     function changeMonth(offset){
@@ -362,7 +380,7 @@
               const tot = l.costPerUnit? (l.amount*l.costPerUnit).toFixed(2):'';
               rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||'',tot,l.comment||'']);
             });
-          });
+          }));
           const ws = XLSX.utils.aoa_to_sheet([['Date','From','To','Product','Amount','Unit','Cost','Total','Comment'],...rows]);
           XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));
         });
@@ -384,6 +402,7 @@
   </script>
 </body>
 </html>
+
 
 
 
