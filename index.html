@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Transfer Tracker</title>
+  <title>Food Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -74,6 +74,11 @@
   </h2>
   <div id="logs"></div>
   <button class="main admin-only" type="button" onclick="exportExcel()">Download Monthly Report</button>
+  <div class="admin-only" style="margin-top:10px;">
+    <label style="display:inline-block; margin-right:8px;">From: <input type="date" id="report-start"></label>
+    <label style="display:inline-block; margin-right:8px;">To:   <input type="date" id="report-end"></label>
+    <button class="main" type="button" onclick="exportDateRange()">Download Report by Date</button>
+  </div>
 
   <!-- External libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -139,6 +144,9 @@
       $("submit-btn").addEventListener("click", addTransfer);
       addItem();
       setAdmin(isAdmin());
+      // initialize date-range inputs to today
+      $("report-start").value = new Date().toISOString().slice(0,10);
+      $("report-end").value   = new Date().toISOString().slice(0,10);
     }
 
     // ----- Add one item block -----
@@ -282,6 +290,35 @@
     function changeMonth(offset){ const [y,m]=selectedMonth.split("-").map(Number); const d=new Date(y,m-1+offset); selectedMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; loadLogs(); }
     function exportExcel(){ db.ref("logs").once("value").then(snapshot=>{ const wb=XLSX.utils.book_new(); snapshot.forEach(storeSnap=>{ const rows=[]; storeSnap.forEach(monthSnap=>{ monthSnap.forEach(logSnap=>{ const l=logSnap.val(); const tot=l.costPerUnit?(l.amount*l.costPerUnit).toFixed(2):""; rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""]); }); }); const ws=XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows]); XLSX.utils.book_append_sheet(wb,ws,storeSnap.key.slice(0,31)); }); XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`); }); }
 
+    // ----- Export by date-range -----
+    function exportDateRange(){
+      const start = $("report-start").value;
+      const end   = $("report-end").value;
+      if(!start||!end) return alert("Please select both start and end dates.");
+      const startD = new Date(start), endD = new Date(end);
+      db.ref("logs").once("value").then(snapshot=>{
+        const wb = XLSX.utils.book_new();
+        snapshot.forEach(storeSnap=>{
+          const rows = [];
+          storeSnap.forEach(monthSnap=>{
+            monthSnap.forEach(logSnap=>{
+              const l = logSnap.val();
+              const d = new Date(l.date);
+              if(d >= startD && d <= endD){
+                const tot = l.costPerUnit ? (l.amount * l.costPerUnit).toFixed(2) : "";
+                rows.push([l.date, l.from, l.to, l.product, l.amount, l.unit, l.costPerUnit||"", tot, l.comment||""]);
+              }
+            });
+          });
+          if(rows.length){
+            const ws = XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"], ...rows]);
+            XLSX.utils.book_append_sheet(wb, ws, storeSnap.key.slice(0,31));
+          }
+        });
+        XLSX.writeFile(wb, `Report_${start}_${end}.xlsx`);
+      });
+    }
+
     // Bootstrap
     setupUI();
 
@@ -308,7 +345,6 @@
   </script>
 </body>
 </html>
-
 
 
 
