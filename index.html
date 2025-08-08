@@ -3,54 +3,54 @@
 <head>
   <meta charset="UTF-8" />
   <title>Food Transfer Tracker</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: Arial; max-width: 700px; margin: auto; padding: 15px; background: #f9f9f9; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    h1 { margin: 0; font-size: 1.8rem; }
-    #login-btn { padding: 6px 12px; font-size: .9rem; border: none; border-radius: 4px; cursor: pointer; }
-    #login-btn.logout { background: #dc3545; color: #fff; }
-    #login-btn:not(.logout) { background: #28a745; color: #fff; }
-    .form-row { margin-bottom: 10px; }
-    label { display: block; font-weight: bold; margin-top: 10px; }
-    input, select, button { width: 100%; padding: 8px; margin: 6px 0; box-sizing: border-box; font-size: 1rem; }
-    button.main { background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; transition: .2s; }
-    button.main:hover { background: #0056b3; }
-    button.main:active { background: #003f7f; transform: scale(.98); }
-    #total-value { font-size: .95rem; color: #333; }
-    .log-entry { background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 10px; margin: 8px 0; }
-    .log-entry.completed { opacity: .6; }
-    .completed-label { color: green; font-style: italic; margin-top: 5px; }
-    .admin-only { display: none; }
-    body.admin .admin-only { display: block; }
+    body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
+    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+    h1 { margin:0; font-size:1.8rem; }
+    #login-btn { background:#28a745; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.9rem; }
+    #login-btn.logout { background:#dc3545; }
+    .form-row { margin-bottom:10px }
+    input, select, button { width:100%; padding:8px; margin:6px 0; box-sizing:border-box; font-size:1rem }
+    label { font-weight:bold; display:block; margin-top:10px }
+    .log-entry { background:#fff; border:1px solid #ccc; padding:10px; margin:8px 0; border-radius:6px }
+    .log-entry.completed { opacity:0.6 }
+    .completed-label { font-style:italic; color:green; margin-top:5px }
+    #total-value { font-size:0.95rem; color:#333; margin-bottom:10px }
+    .admin-only { display:none; }
+    body.admin .admin-only { display:block; }
+    button.main { background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer; transition:background-color .3s }
+    button.main:hover { background:#0056b3 }
+    button.main:active { background:#003f7f; transform:scale(0.98) }
     @media(min-width:600px){
-      .form-row { display: flex; gap: 10px; }
-      input, select { flex: 1; width: auto; }
-      label { display: inline-block; width: auto; margin-top: 0; }
+      .form-row { display:flex; gap:10px }
+      input, select { flex:1; width:auto }
+      label { display:inline-block; width:auto; margin-top:0 }
     }
   </style>
 </head>
 <body>
+
   <div class="header">
     <h1>Food Transfer Tracker</h1>
     <button id="login-btn">Login</button>
   </div>
 
-  <!-- Transfer Form -->
+  <!-- Input Form -->
   <div class="form-row">
-    <label>Date: <input type="date" id="date"/></label>
+    <label>Date: <input type="date" id="date"></label>
     <label>From: <select id="from"></select></label>
     <label>To:   <select id="to"></select></label>
   </div>
   <div class="form-row">
-    <label>Product: <input id="product" placeholder="Product name"/></label>
-    <label>Amount:  <input type="number" id="amount" placeholder="0"/></label>
+    <label>Product: <input id="product" placeholder="Product name"></label>
+    <label>Amount:  <input type="number" id="amount" placeholder="0"></label>
     <label>Unit:    <select id="unit"></select></label>
   </div>
   <div class="form-row">
-    <label>Cost per <span id="unit-label">unit</span>: <input type="number" id="cost" placeholder="$"/></label>
+    <label>Cost per <span id="unit-label">unit</span>: <input type="number" id="cost" placeholder="$"></label>
     <div id="total-value"></div>
-    <label>Comment: <input id="comment" placeholder="Optional comment"/></label>
+    <label>Comment: <input id="comment" placeholder="Optional comment"></label>
   </div>
   <button class="main" onclick="addTransfer()">Submit Transfer</button>
 
@@ -69,19 +69,14 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <!-- Official EmailJS SDK v2 -->
-  <script type="text/javascript" src="https://cdn.emailjs.com/sdk/2.3.2/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
 
   <script>
-    // — CONFIGURATION —
-    const ADMIN_PASSWORD   = "SuperSecret123";
-    const EMAILJS_USERID   = "53xKou9OzR6BhrdWL";   // ← your Public Key
-    const EMAILJS_SERVICE  = "service_gnviol9";
-    const EMAILJS_TEMPLATE = "template_6d3c34k";
+    const ADMIN_PASSWORD = "SuperSecret123";
 
-    emailjs.init(EMAILJS_USERID);
+    function $(id){ return document.getElementById(id); }
+    emailjs.init("53xKou9OzR6BhrdWL");
 
-    // Firebase init
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -105,83 +100,76 @@
       "Ce Soir":       "accounts@cesoirbrasserie.com"
     };
 
-    // stash PDFs by invoice #
-    window._pdfMap = {};
-
-    function $(id){ return document.getElementById(id); }
-
-    // Admin login
     function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
-    function setAdmin(on){
-      localStorage.setItem("isAdmin", on?"true":"false");
-      document.body.classList.toggle("admin", on);
+    function setAdmin(v){
+      localStorage.setItem("isAdmin", v?"true":"false");
+      document.body.classList.toggle("admin", v);
       const btn = $("login-btn");
-      btn.textContent = on?"Logout":"Login";
-      btn.classList.toggle("logout", on);
+      btn.textContent = v ? "Logout" : "Login";
+      btn.classList.toggle("logout", v);
       loadLogs();
     }
-    $("login-btn").onclick = () => {
-      if(isAdmin()) return setAdmin(false);
-      const pw = prompt("Admin password:");
-      if(pw===ADMIN_PASSWORD) setAdmin(true);
-      else alert("Wrong password");
-    };
 
-    // Build UI & load
+    $("login-btn").addEventListener("click", ()=>{
+      if(isAdmin()) return setAdmin(false);
+      const pw = prompt("Enter admin password:");
+      if(pw===ADMIN_PASSWORD) setAdmin(true);
+      else alert("Incorrect password.");
+    });
+
     async function setupUI(){
-      locations.forEach(loc => {
-        ["from","to"].forEach(id => {
-          const o = document.createElement("option");
-          o.value = o.textContent = loc;
+      locations.forEach(loc=>{
+        ["from","to"].forEach(id=>{
+          const o=document.createElement("option");
+          o.value=o.textContent=loc;
           $(id).appendChild(o);
         });
       });
-      units.forEach(u => {
-        const o = document.createElement("option");
-        o.value = o.textContent = u;
+      units.forEach(u=>{
+        const o=document.createElement("option");
+        o.value=o.textContent=u;
         $("unit").appendChild(o);
       });
-      ["unit","amount","cost"].forEach(id => $(id).oninput = updateTotal);
-      $("date").valueAsDate = new Date();
+      ["unit","amount","cost"].forEach(id=>
+        $(id).addEventListener("input",updateTotalValue)
+      );
+      $("date").valueAsDate=new Date();
       setAdmin(isAdmin());
       await loadLogs();
     }
 
-    function updateTotal(){
+    function updateTotalValue(){
       $("unit-label").textContent = $("unit").value;
-      const a = parseFloat($("amount").value)||0,
-            c = parseFloat($("cost").value)||0;
-      $("total-value").textContent = (a && c)
-        ? `Total Value: $${(a*c).toFixed(2)}`
-        : "";
+      const a=parseFloat($("amount").value),
+            c=parseFloat($("cost").value);
+      $("total-value").textContent = (!isNaN(a)&&!isNaN(c))
+        ? `Total Value: $${(a*c).toFixed(2)}` : "";
     }
 
-    async function getNextInvoice(){
-      const snap = await db.ref("invoiceCounter").once("value");
-      const cur  = snap.exists()? snap.val():1000;
-      const nxt  = cur+1;
-      await db.ref().update({ invoiceCounter: nxt });
+    async function getNextInvoiceNumber(){
+      const snap=await db.ref("invoiceCounter").once("value");
+      const cur =snap.exists()?snap.val():1000;
+      const nxt =cur+1;
+      await db.ref().update({invoiceCounter:nxt});
       return nxt;
     }
 
     function renderLogEntry(store,month,key,log){
-      const div = document.createElement("div");
-      div.className = log.completed ? "log-entry completed" : "log-entry";
-      div.dataset.store = store;
-      div.dataset.month = month;
-      div.dataset.key   = key;
-      const costTxt  = log.costPerUnit ? ` @ $${log.costPerUnit.toFixed(2)} each` : "";
-      const totalTxt = log.costPerUnit ? ` = $${(log.amount*log.costPerUnit).toFixed(2)}` : "";
-      const color    = log.amount<0 ? "red" : "green";
-      const disp     = log.amount<0 ? log.amount : "+"+log.amount;
-      let html = `
-        <span style="color:${color};font-size:.95rem">
-          ${disp} ${log.unit} of ${log.product}${costTxt}${totalTxt}
+      const div=document.createElement("div");
+      div.className=log.completed?"log-entry completed":"log-entry";
+      div.dataset.store=store; div.dataset.month=month; div.dataset.key=key;
+      const costTxt=log.costPerUnit?` @ $${log.costPerUnit.toFixed(2)} each`:"";
+      const totalTxt=log.costPerUnit?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"";
+      const color=log.amount<0?"red":"green";
+      const display=log.amount<0?log.amount:"+"+log.amount;
+      let html=`
+        <span style="color:${color};font-size:0.95rem">
+          ${display} ${log.unit} of ${log.product}${costTxt}${totalTxt}
           (${log.date}${log.comment?` | ${log.comment}`:""})
         </span><br>
       `;
       if(isAdmin() && !log.completed){
-        html += `
+        html+=`
           <div class="admin-only">
             <button onclick="editLog('${store}','${month}','${key}',this)">Edit</button>
             <button onclick="openInvoice('${store}','${month}','${key}')">Create Invoice</button>
@@ -189,97 +177,90 @@
         `;
       }
       if(log.completed){
-        html += `<div class="completed-label">Completed</div>`;
+        html+=`<div class="completed-label">Completed</div>`;
       }
-      div.innerHTML = html;
+      div.innerHTML=html;
       return div;
     }
 
     async function loadLogs(){
-      $("logs").innerHTML = "";
-      $("current-month").textContent = selectedMonth;
-      for(const s of locations){
-        const section = document.createElement("div");
-        section.innerHTML = `<h3>${s}</h3>`;
-        const snap = await db.ref(`logs/${s}/${selectedMonth}`).once("value");
-        const data = snap.val()||{};
-        for(const [k,l] of Object.entries(data)){
-          section.appendChild(renderLogEntry(s,selectedMonth,k,l));
+      $("logs").innerHTML="";
+      $("current-month").textContent=selectedMonth;
+      for(const store of locations){
+        const section=document.createElement("div");
+        section.innerHTML=`<h3>${store}</h3>`;
+        const snap=await db.ref(`logs/${store}/${selectedMonth}`).once("value");
+        const data=snap.val();
+        if(data){
+          Object.entries(data).forEach(([key,log])=>
+            section.appendChild(renderLogEntry(store,selectedMonth,key,log))
+          );
         }
         $("logs").appendChild(section);
       }
     }
 
     async function addTransfer(){
-      const d  = $("date").value,
-            f  = $("from").value,
-            t  = $("to").value,
-            p  = $("product").value.trim(),
-            a  = parseFloat($("amount").value),
-            u  = $("unit").value,
-            c  = parseFloat($("cost").value)||0,
-            cm = $("comment").value.trim();
-      if(!d||!f||!t||!p||isNaN(a)||f===t){
-        return alert("Complete all fields and make From≠To.");
+      const date=$("date").value, from=$("from").value, to=$("to").value;
+      const product=$("product").value, rawAmt=parseFloat($("amount").value);
+      const unit=$("unit").value, cpu=parseFloat($("cost").value)||null;
+      const cmnt=$("comment").value||"";
+      if(!date||!from||
+         !to||!product||isNaN(rawAmt)||!unit||from===to){
+        return alert("Complete all fields and ensure From≠To.");
       }
-      const mk = d.slice(0,7),
-            key= db.ref("logs").push().key,
-            out= { date:d,from:f,to:t,product:p,unit:u,costPerUnit:c,comment:cm,completed:false,amount:-a },
-            inn= {...out,amount:a},
-            upd= {};
-      upd[`logs/${f}/${mk}/${key}`] = out;
-      upd[`logs/${t}/${mk}/${key}`] = inn;
-      await db.ref().update(upd);
-      ["product","amount","cost","comment"].forEach(id=>$(id).value="");
-      $("unit").selectedIndex=0; updateTotal();
+      const mk=date.slice(0,7),
+            key=db.ref("logs").push().key;
+      const outLog={date,from,to,product,unit,costPerUnit:cpu,comment:cmnt,completed:false,amount:-rawAmt},
+            inLog ={date,from,to,product,unit,costPerUnit:cpu,comment:cmnt,completed:false,amount: rawAmt},
+            upd   ={};
+      upd[`logs/${from}/${mk}/${key}`]=outLog;
+      upd[`logs/${to}/${mk}/${key}`]  =inLog;
+      try{ await db.ref().update(upd); }
+      catch(e){ console.error(e); return alert("Failed to log transfer."); }
+      ["product","amount","cost","comment"].forEach(i=>$(i).value="");
+      $("unit").selectedIndex=0; updateTotalValue();
       await loadLogs();
     }
 
     async function editLog(store,month,key,btn){
-      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value");  
-      const d=snap.val(); if(!d) return alert("Not found");
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value");
+      const d=snap.val(); if(!d) return alert("Not found.");
       const p=btn.parentElement;
       p.innerHTML=`
-        <input id="e-date" type="date" value="${d.date}"/>
-        <input id="e-prod" placeholder="Product" value="${d.product}"/>
-        <input id="e-amt"  type="number" value="${Math.abs(d.amount)}"/>
+        <input id="e-date" type="date" value="${d.date}">
+        <input id="e-prod" placeholder="Product" value="${d.product}">
+        <input id="e-amt"  type="number" value="${Math.abs(d.amount)}">
         <select id="e-unit">${units.map(u=>
-          `<option${u===d.unit?" selected":""}>${u}</option>`).join("")}
-        </select>
-        <input id="e-cost" placeholder="Cost/unit" value="${d.costPerUnit||0}"/>
-        <input id="e-cmnt" placeholder="Comment" value="${d.comment||""}"/>
+          `<option${u===d.unit?" selected":""}>${u}</option>`
+        ).join("")}</select>
+        <input id="e-cost" placeholder="Cost/unit" value="${d.costPerUnit||""}">
+        <input id="e-cmnt" placeholder="Comment" value="${d.comment||""}">
         <button onclick="saveEdit('${d.from}','${d.to}','${month}','${key}')">Save</button>
       `;
     }
 
     async function saveEdit(from,to,month,key){
-      const dv=$("e-date").value,
-            pv=$("e-prod").value.trim(),
+      const dv=$("e-date").value, pv=$("e-prod").value,
             av=parseFloat($("e-amt").value),
             uv=$("e-unit").value,
-            cv=parseFloat($("e-cost").value)||0,
-            cm=$("e-cmnt").value.trim();
-      const out={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount:-av},
-            inn={...out,amount:av}, upd={};
-      upd[`logs/${from}/${month}/${key}`] = out;
-      upd[`logs/${to}/${month}/${key}`]   = inn;
+            cv=parseFloat($("e-cost").value)||null,
+            cm=$("e-cmnt").value||"";
+      const outLog={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount:-av},
+            inLog ={date:dv,from,to,product:pv,unit:uv,costPerUnit:cv,comment:cm,completed:false,amount: av},
+            upd   ={};
+      upd[`logs/${from}/${month}/${key}`]=outLog;
+      upd[`logs/${to}/${month}/${key}`]  =inLog;
       await db.ref().update(upd);
       await loadLogs();
     }
 
-    // openInvoice (unchanged HTML build via concatenation)
     async function openInvoice(store,month,key){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
-      const log  = snap.val(); if(!log) return alert("Not found");
-
-      const inv = await getNextInvoice();
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-
-      const amt  = log.amount,
-            sign = amt<0 ? "-" : "+",
-            tot  = log.costPerUnit ? (amt*log.costPerUnit).toFixed(2):"0.00";
-
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value");
+      const log=snap.val(); if(!log) return alert("Not found.");
+      const inv=await getNextInvoiceNumber();
+      const { jsPDF }=window.jspdf, doc=new jsPDF();
+      const amt=log.amount, sign=amt<0?"-":"+", tot=log.costPerUnit?(amt*log.costPerUnit).toFixed(2):"0.00";
       doc.setFontSize(16).text(`Invoice #${inv}`,20,20);
       doc.setFontSize(12);
       doc.text(`From: ${log.from}`,20,30);
@@ -291,110 +272,89 @@
       doc.text(`Total: $${tot}`,20,90);
       doc.text(`Direction: ${amt<0?"Outgoing":"Incoming"}`,20,100);
       if(log.comment) doc.text(`Comment: ${log.comment}`,20,110);
-
-      const uri = doc.output("datauristring");
-      window._pdfMap[inv] = uri;
-
-      const html =
-        '<html><head><title>Invoice #' + inv + '</title><style>' +
-        'body{margin:0;font-family:Arial;}' +
-        'iframe{width:100%;height:90vh;border:none;}' +
-        '.buttons{padding:10px;display:flex;justify-content:space-around;background:#f0f0f0;}' +
-        'button{padding:10px 20px;border:none;border-radius:5px;cursor:pointer;transition:.2s;}' +
-        '.cancel{background:red;color:white;}.send{background:green;color:white;}' +
-        'button:active{transform:scale(.98);}' +
-        '</style></head><body>' +
-        '<iframe src="' + uri + '"></iframe>' +
-        '<div class="buttons">' +
-          '<button class="cancel" onclick="window.close()">Cancel</button>' +
-          '<button class="send" onclick="window.opener.sendInvoice(\''+
-            store+"','"+month+"','"+key+"','"+inv+
-          '\');window.close()">Send Invoice</button>' +
-        '</div></body></html>';
-
-      const win = window.open("");
-      win.document.write(html);
+      const uri=doc.output("datauristring"), win=window.open("","_blank");
+      win.document.write(`
+        <html><head><title>Invoice Preview</title><style>
+        body{margin:0;font-family:Arial;}iframe{width:100%;height:90vh;border:none;}
+        .buttons{padding:10px;display:flex;justify-content:space-around;background:#f0f0f0;}
+        button{padding:10px 20px;border:none;border-radius:5px;cursor:pointer;transition:.2s;}
+        .send{background:green;color:#fff;} .cancel{background:red;color:#fff;}
+        button:active{transform:scale(.98);}
+        </style></head><body>
+          <iframe src="${uri}"></iframe>
+          <div class="buttons">
+            <button class="cancel" onclick="window.close()">Cancel</button>
+            <button class="send" onclick="
+              window.opener.sendInvoice('${store}','${month}','${key}',${inv},'${uri}');
+              window.close();
+            ">Send Invoice</button>
+          </div>
+        </body></html>
+      `);
     }
 
-    // sendInvoice with PDF attachment
-    async function sendInvoice(store,month,key,inv){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
-      const log  = snap.val(); if(!log) return alert("Not found");
-
-      const uri    = window._pdfMap && window._pdfMap[inv];
-      if(!uri) return alert("PDF not available");
-      const base64 = uri.split(",")[1];
-
-      const params = {
-        invoice_number: inv,
-        date:           log.date,
-        from_location:  log.from,
-        to_location:    log.to,
-        to_email:       emailAddresses[log.from]
+    async function sendInvoice(store,month,key,inv,uri){
+      const snap=await db.ref(`logs/${store}/${month}/${key}`).once("value");
+      const log=snap.val(); if(!log) return alert("Not found.");
+      const params={
+        date: log.date,
+        from_location: log.from,
+        to_location: log.to,
+        subject: `Aidan Food Transfer ${log.date} #${inv}`,
+        to_email: emailAddresses[log.from]
       };
-      const attachments = [{
-        name: `Invoice_${inv}.pdf`,
-        data: base64
-      }];
-
-      // send document to both sides
-      await emailjs.send(
-        EMAILJS_SERVICE,
-        EMAILJS_TEMPLATE,
-        params,
-        { attachments }
-      );
-      params.to_email = emailAddresses[log.to];
-      await emailjs.send(
-        EMAILJS_SERVICE,
-        EMAILJS_TEMPLATE,
-        params,
-        { attachments }
-      );
-
-      // mark completed
-      const other = log.from===store? log.to:log.from, u={};
-      u[`logs/${store}/${month}/${key}/completed`]      = true;
-      u[`logs/${other}/${month}/${key}/completed`] = true;
-      await db.ref().update(u);
-
-      await loadLogs();
-      alert("Invoices sent with PDF attached!");
+      // minimal template
+      params.pdf_url = uri;
+      try {
+        await emailjs.send('service_gnviol9','template_6d3c34k',params);
+        params.to_email = emailAddresses[log.to];
+        await emailjs.send('service_gnviol9','template_6d3c34k',params);
+        const other = log.from===store? log.to : log.from;
+        const upd={};
+        upd[`logs/${store}/${month}/${key}/completed`]=true;
+        upd[`logs/${other}/${month}/${key}/completed`]=true;
+        await db.ref().update(upd);
+        await loadLogs();
+        alert("Invoices sent!");
+      }catch(e){
+        console.error(e);
+        alert("Failed to send invoice.");
+      }
     }
 
     function changeMonth(offset){
-      const [y,m] = selectedMonth.split("-").map(Number);
-      const d = new Date(y, m-1 + offset);
-      selectedMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      const [y,m]=selectedMonth.split("-").map(Number);
+      const d=new Date(y,m-1+offset);
+      selectedMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
       loadLogs();
     }
 
     function exportExcel(){
       db.ref("logs").once("value").then(snapshot=>{
-        const wb = XLSX.utils.book_new();
+        const wb=XLSX.utils.book_new();
         snapshot.forEach(storeSnap=>{
-          const name = storeSnap.key, rows=[]
+          const name=storeSnap.key, rows=[];
           storeSnap.forEach(monthSnap=>{
-            monthSnap.forEach(lSnap=>{
-              const l = lSnap.val(), tot=l.costPerUnit? (l.amount*l.costPerUnit).toFixed(2):""
-              rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""])
-            })
-          })
-          const ws = XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows])
-          XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31))
-        })
-        XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`)
-      })
+            monthSnap.forEach(logSnap=>{
+              const l=logSnap.val(), tot=l.costPerUnit?(l.amount*l.costPerUnit).toFixed(2):"";
+              rows.push([l.date,l.from,l.to,l.product,l.amount,l.unit,l.costPerUnit||"",tot,l.comment||""]);
+            });
+          });
+          const ws=XLSX.utils.aoa_to_sheet([["Date","From","To","Product","Amount","Unit","Cost","Total","Comment"],...rows]);
+          XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));
+        });
+        XLSX.writeFile(wb,`FoodTransfers_${selectedMonth}.xlsx`);
+      });
     }
 
-    // expose & bootstrap
-    window.addTransfer  = addTransfer;
-    window.editLog      = editLog;
-    window.saveEdit     = saveEdit;
-    window.openInvoice  = openInvoice;
-    window.sendInvoice  = sendInvoice;
-    window.changeMonth  = changeMonth;
-    window.exportExcel  = exportExcel;
+    window.setupUI    = setupUI;
+    window.addTransfer= addTransfer;
+    window.editLog    = editLog;
+    window.saveEdit   = saveEdit;
+    window.openInvoice= openInvoice;
+    window.sendInvoice= sendInvoice;
+    window.changeMonth= changeMonth;
+    window.exportExcel= exportExcel;
 
     setupUI();
   </script>
