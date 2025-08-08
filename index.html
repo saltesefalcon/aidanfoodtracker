@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Transfer Tracker</n  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Food Transfer Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
     .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
@@ -12,11 +13,11 @@
     .form-row { margin-bottom:10px }
     input, select, button { width:100%; padding:8px; margin:6px 0; box-sizing:border-box; font-size:1rem }
     label { font-weight:bold; display:block; margin-top:10px }
-    .item-group { border:1px solid #007bff; border-radius:6px; padding:10px; margin-bottom:12px; background:#fff }
+    .item-group { border:1px solid #ccc; border-radius:6px; padding:10px; margin-bottom:10px; background:#fff }
     .log-entry { background:#fff; border:1px solid #ccc; padding:10px; margin:8px 0; border-radius:6px }
     .log-entry.completed { opacity:0.6 }
     .completed-label { font-style:italic; color:green; margin-top:5px }
-    .total-value { font-size:0.95rem; color:#333; margin-bottom:10px }
+    #total-value, .total-value { font-size:0.95rem; color:#333; margin-bottom:10px }
     .admin-only { display:none; }
     body.admin .admin-only { display:block; }
     button.main { background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer; transition:background-color .3s }
@@ -37,7 +38,7 @@
     <button id="login-btn">Login</button>
   </div>
 
-  <!-- Master Inputs -->
+  <!-- Static Inputs -->
   <div class="form-row">
     <label>Date: <input type="date" id="date"></label>
     <label>From: <select id="from"></select></label>
@@ -54,8 +55,8 @@
     <label>Comment: <input id="comment" placeholder="Optional comment"></label>
   </div>
 
-  <!-- Additional Items -->
-  <div id="extra-items"></div>
+  <!-- Dynamic Extra Items -->
+  <div id="items-container"></div>
   <button class="main" id="add-item-btn">More Items</button>
   <button class="main" onclick="addTransfer()">Submit Transfer</button>
 
@@ -79,108 +80,104 @@
   <script>
     const ADMIN_PASSWORD = "SuperSecret123";
     function $(id){ return document.getElementById(id); }
-
     emailjs.init("53xKou9OzR6BhrdWL");
 
-    const firebaseConfig = { /* same as Tracker8 */ };
+    // Firebase setup
+    const firebaseConfig = {
+      apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
+      authDomain: "food-tracker-fd312.firebaseapp.com",
+      databaseURL: "https://food-tracker-fd312-default-rtdb.firebaseio.com",
+      projectId: "food-tracker-fd312",
+      storageBucket: "food-tracker-fd312.firebasestorage.app",
+      messagingSenderId: "1012475913662",
+      appId: "1:1012475913662:web:81837595030d4b8a8105ef"
+    };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
     const locations = ["Prohibition","Tulia Osteria","Ce Soir","Beacon"];
     const units     = ["oz","lb","kg","fl oz","ml","L"];
     let selectedMonth = new Date().toISOString().slice(0,7);
-    const emailAddresses = { /* same mapping */ };
+    const emailAddresses = {
+      "Prohibition":   "accounts@prohibitionsocialhouse.com",
+      "Beacon":        "accounts@beaconsocialhouse.com",
+      "Tulia Osteria": "accounts@tuliaosteria.com",
+      "Ce Soir":       "accounts@cesoirbrasserie.com"
+    };
 
     function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
-    function setAdmin(v){ /* same as Tracker8 */ }
-    $("login-btn").addEventListener("click", /* ... */ );
+    function setAdmin(v){
+      localStorage.setItem("isAdmin", v?"true":"false");
+      document.body.classList.toggle("admin", v);
+      const btn = $("login-btn");
+      btn.textContent = v ? "Logout" : "Login";
+      btn.classList.toggle("logout", v);
+      loadLogs();
+    }
+    $("login-btn").addEventListener("click", ()=>{
+      if(isAdmin()) return setAdmin(false);
+      const pw = prompt("Enter admin password:");
+      if(pw===ADMIN_PASSWORD) setAdmin(true);
+      else alert("Incorrect password.");
+    });
 
     async function setupUI(){
-      locations.forEach(loc=>{
-        ["from","to"].forEach(id=>{
-          const o=document.createElement("option"); o.value=o.textContent=loc;
-          $(id).appendChild(o);
-        });
-      });
-      units.forEach(u=>{ const o=document.createElement("option"); o.value=o.textContent=u; $("unit").appendChild(o); });
-      ["unit","amount","cost"].forEach(id=>$(id).addEventListener("input", updateTotalValue));
+      // populate static selects
+      locations.forEach(loc=>{["from","to"].forEach(id=>{const o=document.createElement("option");o.value=o.textContent=loc;$(id).appendChild(o);});});
+      units.forEach(u=>{const o=document.createElement("option");o.value=o.textContent=u;$("unit").appendChild(o);});
+      // defaults & listeners
       $("date").valueAsDate=new Date();
-      setAdmin(isAdmin());
+      ["unit","amount","cost"].forEach(id=>$(id).addEventListener("input", updateAllTotals));
       document.getElementById("add-item-btn").addEventListener("click", addItemGroup);
+      setAdmin(isAdmin());
       await loadLogs();
     }
 
-    function updateTotalValue(){ /* same as Tracker8 */ }
+    function updateAllTotals(){
+      // static
+      const a=parseFloat($("amount").value),c=parseFloat($("cost").value),u=$("unit").value;
+      $("unit-label").textContent=u;
+      $("total-value").textContent = (!isNaN(a)&&!isNaN(c))?`Total Value: $${(a*c).toFixed(2)}`:"";
+      // dynamic
+      document.querySelectorAll(".item-group").forEach(grp=>{
+        const ai=parseFloat(grp.querySelector(".item-amount").value),
+              ci=parseFloat(grp.querySelector(".item-cost").value),
+              ui=grp.querySelector(".item-unit").value;
+        grp.querySelector(".unit-label").textContent=ui;
+        grp.querySelector(".total-value").textContent = (!isNaN(ai)&&!isNaN(ci))?`Total Value: $${(ai*ci).toFixed(2)}`:"";
+      });
+    }
 
     function addItemGroup(){
-      const container = $("extra-items");
-      const grp = document.createElement("div"); grp.className="item-group";
-      grp.innerHTML = `
-        <div class="form-row">
-          <label>Product: <input class="item-product" placeholder="Product name"></label>
-          <label>Amount:  <input class="item-amount" type="number" placeholder="0"></label>
-          <label>Unit:    <select class="item-unit"></select></label>
-        </div>
-        <div class="form-row">
-          <label>Cost per <span class="unit-label">unit</span>: <input class="item-cost" type="number" placeholder="$"></label>
-          <div class="total-value"></div>
-          <label>Comment: <input class="item-comment" placeholder="Optional comment"></label>
-        </div>`;
-      units.forEach(u=>{ const o=document.createElement("option"); o.value=o.textContent=u; grp.querySelector(".item-unit").appendChild(o); });
-      [".item-unit",".item-amount",".item-cost"].forEach(sel=>grp.querySelector(sel).addEventListener("input", updateTotalValue));
-      container.appendChild(grp);
-      updateTotalValue();
+      const cont=$("items-container"),g=document.createElement("div");g.className="item-group";
+      g.innerHTML=`<div class="form-row">
+        <label>Product: <input class="item-product" placeholder="Product name"></label>
+        <label>Amount:  <input class="item-amount" type="number" placeholder="0"></label>
+        <label>Unit:    <select class="item-unit"></select></label>
+      </div><div class="form-row">
+        <label>Cost per <span class="unit-label">unit</span>: <input class="item-cost" type="number" placeholder="$"></label>
+        <div class="total-value"></div>
+        <label>Comment: <input class="item-comment" placeholder="Optional comment"></label>
+      </div>`;
+      units.forEach(u=>{const o=document.createElement("option");o.value=o.textContent=u;g.querySelector(".item-unit").appendChild(o);});
+      [".item-unit",".item-amount",".item-cost"].forEach(s=>g.querySelector(s).addEventListener("input", updateAllTotals));
+      cont.appendChild(g); updateAllTotals();
     }
 
-    async function getNextInvoiceNumber(){ /* same as Tracker8 */ }
-    function renderLogEntry(){ /* same */ }
-    async function loadLogs(){ /* same */ }
+    async function getNextInvoiceNumber(){const s=await db.ref("invoiceCounter").once("value"),cur=s.exists()?s.val():1000,n=cur+1;await db.ref().update({invoiceCounter:n});return n;}
+    function renderLogEntry(store,month,key,log){const d=document.createElement("div");d.className=log.completed?"log-entry completed":"log-entry";d.dataset.store=store;d.dataset.month=month;d.dataset.key=key;const ct=log.costPerUnit?` @ $${log.costPerUnit.toFixed(2)} each`:"",tt=log.costPerUnit?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"",col=log.amount<0?"red":"green",disp=log.amount<0?log.amount:"+"+log.amount;let h=`<span style="color:${col};font-size:0.95rem">${disp} ${log.unit} of ${log.product}${ct}${tt} (${log.date}${log.comment?` | ${log.comment}`:""})</span><br>`;if(isAdmin()&&!log.completed){h+=`<div class="admin-only"><button onclick="editLog('${store}','${month}','${key}',this)">Edit</button> <button onclick="openInvoice('${store}','${month}','${key}')">Create Invoice</button></div>`;}if(log.completed)h+=`<div class="completed-label">Completed</div>`;d.innerHTML=h;return d;}
+    async function loadLogs(){$("logs").innerHTML="";$("current-month").textContent=selectedMonth;for(const s of locations){const sec=document.createElement("div");sec.innerHTML=`<h3>${s}</h3>`;const snap=await db.ref(`logs/${s}/${selectedMonth}`).once("value"),data=snap.val();if(data)Object.entries(data).forEach(([k,l])=>sec.appendChild(renderLogEntry(s,selectedMonth,k,l)));$("logs").appendChild(sec);} }
+    async function addTransfer(){const date=$("date").value,from=$("from").value,to=$("to").value;if(!date||!from||!to)return alert("Please fill Date, From, and To.");const mk=date.slice(0,7),updates={};
+      // static
+      {const p=$("product").value,a=parseFloat($("amount").value),u=$("unit").value,c=parseFloat($("cost").value)||null,cm=$("comment").value||"";if(p&&!isNaN(a)&&u){const k=db.ref("logs").push().key;updates[`logs/${from}/${mk}/${k}`]={date,from,to,product:p,unit:u,costPerUnit:c,comment:cm,completed:false,amount:-a};updates[`logs/${to}/${mk}/${k}`]={date,from,to,product:p,unit:u,costPerUnit:c,comment:cm,completed:false,amount:a};}}
+      // dynamic
+      document.querySelectorAll(".item-group").forEach(grp=>{const p=grp.querySelector(".item-product").value,a=parseFloat(grp.querySelector(".item-amount").value),u=grp.querySelector(".item-unit").value,c=parseFloat(grp.querySelector(".item-cost").value)||null,cm=grp.querySelector(".item-comment").value||"";if(p&&!isNaN(a)&&u){const k=db.ref("logs").push().key;updates[`logs/${from}/${mk}/${k}`]={date,from,to,product:p,unit:u,costPerUnit:c,comment:cm,completed:false,amount:-a};updates[`logs/${to}/${mk}/${k}`]={date,from,to,product:p,unit:u,costPerUnit:c,comment:cm,completed:false,amount:a};}});
+      try{await db.ref().update(updates);}catch(e){console.error(e);return alert("Failed to log transfer.");}
+      $("items-container").innerHTML="";updateAllTotals();await loadLogs();}
+    
+    // editLog, saveEdit, openInvoice, sendInvoice, changeMonth, exportExcel unchanged from Tracker8
 
-    async function addTransfer(){
-      const date=$("date").value, from=$("from").value, to=$("to").value;
-      if(!date||!from||!to) return alert("Please fill Date, From, and To.");
-      const mk=date.slice(0,7), upd={};
-      // static first item
-      const prod0=$("product").value, amt0=parseFloat($("amount").value),
-            unit0=$("unit").value, cost0=parseFloat($("cost").value)||null,
-            cm0=$("comment").value||"";
-      if(prod0 && !isNaN(amt0) && unit0){
-        const key=db.ref("logs").push().key;
-        upd[`logs/${from}/${mk}/${key}`]={date,from,to,product:prod0,unit:unit0,costPerUnit:cost0,comment:cm0,completed:false,amount:-amt0};
-        upd[`logs/${to}/${mk}/${key}`]  ={date,from,to,product:prod0,unit:unit0,costPerUnit:cost0,comment:cm0,completed:false,amount: amt0};
-      }
-      // extra items
-      document.querySelectorAll(".item-group").forEach(grp=>{
-        const p=grp.querySelector(".item-product").value,
-              a=parseFloat(grp.querySelector(".item-amount").value),
-              u=grp.querySelector(".item-unit").value,
-              c=parseFloat(grp.querySelector(".item-cost").value)||null,
-              cm=grp.querySelector(".item-comment").value||"";
-        if(p && !isNaN(a) && u){
-          const k=db.ref("logs").push().key;
-          upd[`logs/${from}/${mk}/${k}`]={date,from,to,product:p,unit:u,costPerUnit:c,comment:cm,completed:false,amount:-a};
-          upd[`logs/${to}/${mk}/${k}`]  ={date,from,to,product:p,unit:u,costPerUnit:c,comment:cm,completed:false,amount: a};
-        }
-      });
-      try{ await db.ref().update(upd); } catch(e){ console.error(e); return alert("Failed to log transfer."); }
-      // reset extras
-      $("extra-items").innerHTML="";
-      updateTotalValue();
-      await loadLogs();
-    }
-
-    // remaining functions: editLog, saveEdit, openInvoice, sendInvoice, changeMonth, exportExcel (unchanged)
-
-    window.setupUI     = setupUI;
-    window.addTransfer = addTransfer;
-    window.addItemGroup= addItemGroup;
-    window.changeMonth = changeMonth;
-    window.exportExcel = exportExcel;
-    window.openInvoice = openInvoice;
-    window.sendInvoice = sendInvoice;
-    window.editLog     = editLog;
-    window.saveEdit    = saveEdit;
-
+    window.setupUI=setupUI;window.addTransfer=addTransfer;window.addItemGroup=addItemGroup;window.loadLogs=loadLogs;window.changeMonth=changeMonth;window.exportExcel=exportExcel;window.openInvoice=openInvoice;window.sendInvoice=sendInvoice;window.editLog=editLog;window.saveEdit=saveEdit;
     setupUI();
   </script>
 </body>
