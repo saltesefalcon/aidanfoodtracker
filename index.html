@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Food Tracker</title>
+  <title>Food Transfer Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial; padding:15px; max-width:700px; margin:auto; background:#f9f9f9 }
@@ -339,17 +339,21 @@
       `);
     }
 
-    // Send invoice emails with PDF attachment
+    // Send invoice emails with PDF as true attachment
     async function sendInvoice(store,month,key,inv,uri){
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value");
       const log  = snap.val(); if(!log) return alert("Not found.");
 
-      // Extract base64 PDF (strip header)
+      // Strip data URI header
       const base64pdf = uri.split(',')[1];
 
-      // Build attachments array for EmailJS dynamic attachments
+      // Build dynamic attachments array with type
       const attachments = [
-        { name: `Invoice_${inv}.pdf`, data: base64pdf }
+        {
+          name: `Invoice_${inv}.pdf`,
+          data: base64pdf,
+          type: 'application/pdf'
+        }
       ];
 
       const commonParams = {
@@ -357,31 +361,31 @@
         from_location: log.from,
         to_location:   log.to,
         subject:       `Aidan Food Transfer ${log.date} #${inv}`,
-        attachments    // matches your Parameter Name in EmailJS
+        attachments    // matches Parameter Name in your EmailJS template
       };
 
       try {
-        // Send to “from” location
+        // send to “from”
         await emailjs.send(
           'service_gnviol9',
           'template_6d3c34k',
           { ...commonParams, to_email: emailAddresses[log.from] }
         );
-        // Send to “to” location
+        // send to “to”
         await emailjs.send(
           'service_gnviol9',
           'template_6d3c34k',
           { ...commonParams, to_email: emailAddresses[log.to] }
         );
 
-        // Mark completed
+        // mark completed
         const other = log.from === store ? log.to : log.from;
         const upd   = {};
         upd[`logs/${store}/${month}/${key}/completed`] = true;
         upd[`logs/${other}/${month}/${key}/completed`] = true;
         await db.ref().update(upd);
         await loadLogs();
-        alert("Invoices sent!");
+        alert("Invoices sent with attachment!");
       } catch(e){
         console.error(e);
         alert("Failed to send invoice.");
@@ -401,19 +405,16 @@
       db.ref("logs").once("value").then(snapshot=>{
         const wb = XLSX.utils.book_new();
         snapshot.forEach(storeSnap=>{
-          const name = storeSnap.key,
-                rows = [];
+          const name = storeSnap.key, rows = [];
           storeSnap.forEach(monthSnap=>{
             monthSnap.forEach(logSnap=>{
               const l = logSnap.val(),
                     tot = l.costPerUnit
                           ? (l.amount * l.costPerUnit).toFixed(2)
                           : "";
-              rows.push([
-                l.date, l.from, l.to,
-                l.product, l.amount, l.unit,
-                l.costPerUnit||"", tot, l.comment||""
-              ]);
+              rows.push([ l.date, l.from, l.to,
+                          l.product, l.amount, l.unit,
+                          l.costPerUnit||"", tot, l.comment||"" ]);
             });
           });
           const ws = XLSX.utils.aoa_to_sheet([
@@ -426,7 +427,7 @@
       });
     }
 
-    // Expose to window
+    // Expose
     window.setupUI     = setupUI;
     window.addTransfer = addTransfer;
     window.editLog     = editLog;
@@ -436,11 +437,11 @@
     window.changeMonth = changeMonth;
     window.exportExcel = exportExcel;
 
-    // Initialize
     setupUI();
   </script>
 </body>
 </html>
+
 
 
 
