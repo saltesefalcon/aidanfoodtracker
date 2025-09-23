@@ -129,7 +129,7 @@
     const ADMIN_PASSWORD = "SuperSecret123";
     function $(id){ return document.getElementById(id); }
 
-    // ----- Initialize Firebase (EmailJS removed) -----
+    // ----- Initialize Firebase -----
     const firebaseConfig = {
       apiKey: "AIzaSyAMnZy_gRIu43w6RyvcgRFHcV6xQjBAriM",
       authDomain: "food-tracker-fd312.firebaseapp.com",
@@ -142,7 +142,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Connectivity indicator
+    // Firebase connectivity indicator
     (function watchFirebaseConnection(){
       const status = $("fb-status");
       const connRef = db.ref(".info/connected");
@@ -153,21 +153,12 @@
           status.innerHTML = 'Firebase: <strong class="err">offline</strong>';
         }
       });
-
-      // Lightweight write test (does not clutter logs)
-      db.ref("__healthcheck").set({ ts: Date.now() }).catch(err => {
-        status.innerHTML = 'Firebase: <strong class="err">write blocked</strong>';
-        console.error("Firebase write failed. Check databaseURL and Realtime DB Rules.", err);
-        alert("Firebase cannot write. Check your Realtime Database rules and databaseURL.");
-      });
     })();
 
-    // ----- Static data -----
     const locations = ["Prohibition","Tulia Osteria","Ce Soir","Beacon"];
     const units     = ["oz","lb","kg","fl oz","ml","L"];
     let selectedMonth = new Date().toISOString().slice(0,7);
 
-    // ----- Admin login toggle -----
     function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
     function setAdmin(v){
       localStorage.setItem("isAdmin", v?"true":"false");
@@ -184,20 +175,14 @@
       else alert("Incorrect password.");
     });
 
-    // ----- Setup UI on load -----
     function fillLocationSelect(sel){
       locations.forEach(loc=>{ const o=document.createElement("option"); o.value=o.textContent=loc; sel.appendChild(o); });
     }
     async function setupUI(){
       $("date").valueAsDate = new Date();
-
-      // Top From/To
       fillLocationSelect($("from"));
       fillLocationSelect($("to"));
-
-      // Range-invoice select
       fillLocationSelect($("inv-loc"));
-
       $("add-item-btn").addEventListener("click", addItem);
       $("submit-btn").addEventListener("click", addTransfer);
       addItem();
@@ -207,8 +192,6 @@
       $("report-end").value   = today;
       $("inv-start").value    = today;
       $("inv-end").value      = today;
-
-      // Modal buttons
       $("invoice-cancel").onclick = ()=> { closeInvoiceModal(); };
       $("invoice-download").onclick = ()=> {
         if (window.__lastPDF) {
@@ -236,11 +219,10 @@
       window.__lastPDFName = null;
     }
 
-    // ----- Add one item block -----
     function addItem(){
-      const frag     = $("item-template").content.cloneNode(true);
-      const sel      = frag.querySelector('select[name="unit"]');
-      const label    = frag.querySelector('.unit-label');
+      const frag = $("item-template").content.cloneNode(true);
+      const sel = frag.querySelector('select[name="unit"]');
+      const label = frag.querySelector('.unit-label');
       const amtInput = frag.querySelector('input[name="amount"]');
       const costInput= frag.querySelector('input[name="cost"]');
       const totalDiv = frag.querySelector('.total-value');
@@ -257,7 +239,6 @@
       $("items-container").appendChild(frag);
     }
 
-    // ----- Load & display logs -----
     async function loadLogs(){
       $("logs").innerHTML = "";
       $("current-month").textContent = selectedMonth;
@@ -270,10 +251,6 @@
           if(data) Object.entries(data).forEach(([key,log])=> sec.appendChild(renderLogEntry(store,selectedMonth,key,log)));
         }catch(e){
           console.error("Failed to load logs", e);
-          const warn = document.createElement("div");
-          warn.className = "muted";
-          warn.textContent = "Unable to load logs for this month (check rules / connection).";
-          sec.appendChild(warn);
         }
         $("logs").appendChild(sec);
       }
@@ -282,164 +259,51 @@
     function renderLogEntry(store,month,key,log){
       const div = document.createElement("div");
       div.className = log.completed?"log-entry completed":"log-entry";
-      div.dataset.store=store; div.dataset.month=month; div.dataset.key=key;
-      const costTxt  = Number.isFinite(log.costPerUnit)?` @ $${Number(log.costPerUnit).toFixed(2)} each`:"";
-      const totalTxt = Number.isFinite(log.costPerUnit)?` = $${(log.amount*log.costPerUnit).toFixed(2)}`:"";
       const color    = log.amount<0?"red":"green";
       const display  = log.amount<0?log.amount:`+${log.amount}`;
-      div.innerHTML = `
-        <span style="color:${color};font-size:0.95rem">
-          ${display} ${log.unit} of ${log.product}${costTxt}${totalTxt}
-          (${log.date}${log.comment?` | ${log.comment}`:""})
-        </span><br>`;
-      if(isAdmin()&&!log.completed){
-        const adm = document.createElement("div"); adm.className="admin-only";
-        adm.innerHTML = `
-          <button onclick="editLog('${store}','${month}','${key}',this)">Edit</button>
-          <button onclick="openInvoice('${store}','${month}','${key}')">Create Invoice</button>`;
-        div.appendChild(adm);
-      }
-      if(log.completed){
-        const lbl=document.createElement("div");
-        lbl.className="completed-label";
-        lbl.textContent="Completed";
-        div.appendChild(lbl);
-      }
+      div.innerHTML = `<span style="color:${color}">${display} ${log.unit} of ${log.product} (${log.date})</span>`;
       return div;
     }
 
-    // ----- Submit all items as transfers -----
     async function addTransfer(){
       const date = $("date").value, from = $("from").value, to = $("to").value;
-      if(!date||!from||!to||from===to) return alert("Select date and/from/to with From≠To.");
+      if(!date||!from||!to||from===to) return alert("Select valid date/from/to.");
       selectedMonth = date.slice(0,7);
-      const mk = selectedMonth;
       const groups = document.querySelectorAll('.item-group');
-      let wrote = 0;
       for(const g of groups){
         const product = g.querySelector('[name="product"]').value.trim();
         const amt     = parseFloat(g.querySelector('[name="amount"]').value);
         const unit    = g.querySelector('[name="unit"]').value;
         const cpuRaw  = g.querySelector('[name="cost"]').value;
         const cpu     = cpuRaw==="" ? null : parseFloat(cpuRaw);
-        const cmnt    = g.querySelector('[name="comment"]').value||"";
-        if(!product||isNaN(amt)||!unit) return alert("Complete all item fields.");
+        if(!product||isNaN(amt)) return alert("Complete all fields.");
         const key = db.ref('logs').push().key;
-        const out = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount:-amt };
-        const inLog = { date, from, to, product, unit, costPerUnit:cpu, comment:cmnt, completed:false, amount: amt };
+        const out = { date, from, to, product, unit, costPerUnit:cpu, amount:-amt };
+        const inLog = { date, from, to, product, unit, costPerUnit:cpu, amount: amt };
         const upd={};
-        upd[`logs/${from}/${mk}/${key}`]=out;
-        upd[`logs/${to}/${mk}/${key}`]=inLog;
-        try{
-          await db.ref().update(upd);
-          wrote++;
-        }catch(e){
-          console.error("Save failed", e);
-          alert("Firebase save failed. Check your Realtime Database rules (write denied) or databaseURL.");
-          break;
-        }
-      }
-      if(wrote>0){
-        $("items-container").innerHTML=""; $("date").valueAsDate=new Date();
-        $("from").selectedIndex=$("to").selectedIndex=0;
-        addItem();
-        loadLogs();
-      }
-    }
-
-    // ----- Edit & save -----
-    async function editLog(store,month,key,btn){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value").catch(()=>null);
-      const d = snap?.val();
-      if(!d) return alert("Not found.");
-      const p = btn.parentElement;
-      p.innerHTML =
-        `<input id="e-date" type="date" value="${d.date}">`+
-        `<input id="e-prod" placeholder="Product" value="${d.product}">`+
-        `<input id="e-amt" type="number" value="${Math.abs(d.amount)}">`+
-        `<select id="e-unit">${units.map(u=>`<option${u===d.unit?" selected":""}>${u}</option>`).join('')}</select>`+
-        `<input id="e-cost" placeholder="Cost/unit" value="${d.costPerUnit??''}" step="0.01">`+
-        `<input id="e-cmnt" placeholder="Comment" value="${d.comment||''}">`+
-        `<button onclick="saveEdit('${d.from}','${d.to}','${month}','${key}')">Save</button>`;
-    }
-    async function saveEdit(from,to,month,key){
-      const dv=$("e-date").value, pv=$("e-prod").value.trim(), av=parseFloat($("e-amt").value),
-            uv=$("e-unit").value, cvRaw=$("e-cost").value, cv=(cvRaw===""?null:parseFloat(cvRaw)), cm=$("e-cmnt").value||"";
-      const out   = { date:dv, from, to, product:pv, unit:uv, costPerUnit:cv, comment:cm, completed:false, amount:-av };
-      const inLog = { date:dv, from, to, product:pv, unit:uv, costPerUnit:cv, comment:cm, completed:false, amount: av };
-      const upd={};
-      upd[`logs/${from}/${month}/${key}`]=out;
-      upd[`logs/${to}/${month}/${key}`]=inLog;
-      try{
+        upd[`logs/${from}/${selectedMonth}/${key}`]=out;
+        upd[`logs/${to}/${selectedMonth}/${key}`]=inLog;
         await db.ref().update(upd);
-        loadLogs();
-      }catch(e){
-        console.error("Edit save failed", e);
-        alert("Firebase save failed while editing. Check rules/connection.");
       }
+      $("items-container").innerHTML=""; $("date").valueAsDate=new Date();
+      $("from").selectedIndex=$("to").selectedIndex=0;
+      addItem(); loadLogs();
     }
 
-    // ----- Invoice (single transfer) – manual download/print -----
-    async function openInvoice(store,month,key){
-      const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value").catch(()=>null);
-      const log = snap?.val();
-      if(!log) return alert("Not found.");
-      const inv = await getNextInvoiceNumber();
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const amt=log.amount, sign=amt<0?"-":"+", tot=(Number.isFinite(log.costPerUnit)?(amt*log.costPerUnit):0).toFixed(2);
-
-      doc.setFontSize(16).text(`Invoice #${inv}`,20,20);
-      doc.setFontSize(12);
-      ["From: "+log.from, "To:   "+log.to, "Date: "+log.date].forEach((t,i)=>doc.text(t,20,30+10*i));
-      const lines = [
-        "Product: "+log.product,
-        "Amount: "+sign+Math.abs(amt)+" "+log.unit,
-        "Cost/unit: $"+(Number.isFinite(log.costPerUnit)?Number(log.costPerUnit).toFixed(2):"0.00"),
-        "Total: $"+tot,
-        "Direction: "+(amt<0?"Outgoing":"Incoming"),
-        log.comment?("Comment: "+log.comment):""
-      ].filter(Boolean);
-      lines.forEach((t,i)=>doc.text(t,20,60+10*i));
-
-      showPDFInModal(doc, `Invoice_${log.date}_${inv}.pdf`);
-    }
-
-    async function getNextInvoiceNumber(){
-      try{
-        const snap = await db.ref("invoiceCounter").once("value");
-        const cur = snap.exists()?snap.val():1000, nxt = cur+1;
-        await db.ref().update({ invoiceCounter: nxt });
-        return nxt;
-      }catch(e){
-        console.warn("Counter update failed, falling back to timestamp", e);
-        return Math.floor(Date.now()/1000);
-      }
-    }
-
-    function showPDFInModal(doc, filename){
-      const blobUri = doc.output("bloburi");
-      $("invoice-iframe").src = blobUri;
-      $("invoice-modal").style.display = "block";
-      window.__lastPDF = doc;
-      window.__lastPDFName = filename;
-    }
-
-    // ----- Location + date-range invoice (includes IN & OUT) -----
+    // ------- Location + Date Range Invoice (monospace, clean columns) -------
     async function buildRangeInvoice(){
       const loc = $("inv-loc").value;
       const s   = $("inv-start").value;
       const e   = $("inv-end").value;
       if(!loc) return alert("Choose a location.");
-      if(!s || !e) return alert("Choose a start and end date.");
-      const start = new Date(s);
-      const end   = new Date(e);
-      if (end < start) return alert("End date must be after start date.");
+      if(!s || !e) return alert("Choose start and end dates.");
+      const start = new Date(s), end = new Date(e);
+      if(end<start) return alert("End date must be after start date.");
 
-      let rows = []; // each transfer affecting 'loc'
+      // collect rows (both directions relative to loc)
+      let rows = [];
       try{
-        const storeRef = db.ref(`logs/${loc}`);
-        const snap = await storeRef.once("value");
+        const snap = await db.ref(`logs/${loc}`).once("value");
         if (snap.exists()) {
           snap.forEach(monthSnap => {
             monthSnap.forEach(logSnap => {
@@ -448,7 +312,7 @@
               const d = new Date(l.date);
               if (d >= start && d <= end) {
                 const cpu = Number.isFinite(l.costPerUnit) ? Number(l.costPerUnit) : 0;
-                const amt = Number(l.amount) || 0; // +incoming, -outgoing relative to loc
+                const amt = Number(l.amount) || 0; // +incoming, -outgoing
                 const counterparty = amt < 0 ? l.to : l.from;
                 rows.push({
                   date: l.date,
@@ -456,11 +320,9 @@
                   counterparty,
                   product: l.product,
                   qty: Math.abs(amt),
-                  signedQty: amt,     // for display if desired
                   unit: l.unit,
                   cpu,
-                  lineValue: +(amt * cpu).toFixed(2), // signed line total
-                  comment: l.comment || ""
+                  lineValue: +(amt * cpu).toFixed(2) // signed
                 });
               }
             });
@@ -470,82 +332,103 @@
         console.error("Failed to read logs for range invoice", err);
         return alert("Could not read transfers to build invoice (check rules/connection).");
       }
+      if (!rows.length) return alert("No transfers found.");
 
-      if (rows.length === 0) {
-        return alert("No transfers found for that location & date range.");
-      }
-
-      // Sort by date
+      // sort & totals
       rows.sort((a,b)=> a.date.localeCompare(b.date));
-
-      // Totals
       const incomingTotal = rows.filter(r=>r.direction==="In").reduce((s,r)=>s + r.lineValue, 0);
       const outgoingTotal = rows.filter(r=>r.direction==="Out").reduce((s,r)=>s + r.lineValue, 0);
-      const netTotal      = +(incomingTotal + outgoingTotal).toFixed(2); // outgoingTotal is negative numbers
+      const netTotal      = +(incomingTotal + outgoingTotal).toFixed(2); // outgoing is negative
 
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
+      const doc = new jsPDF();                 // A4 width ≈ 210mm
+      const left = 14, right = 200;            // printable bounds
+      const rowH = 6;
+
+      function clip(str,max){ str = String(str ?? ""); return str.length>max ? str.slice(0,max-1)+"…" : str; }
 
       // Header
-      doc.setFontSize(16).text(`Invoice (All Transfers for ${loc})`, 20, 20);
+      doc.setFontSize(16).text(`Invoice (All Transfers for ${loc})`, left, 20);
       doc.setFontSize(12);
-      const hdr = [
+      [
         `Location: ${loc}`,
         `Range: ${s} to ${e}`,
         `Generated: ${new Date().toISOString().slice(0,19).replace('T',' ')}`
-      ];
-      hdr.forEach((t,i)=>doc.text(t,20,30+8*i));
+      ].forEach((t,i)=>doc.text(t, left, 30 + 8*i));
 
-      // Table headers
-      let y = 65;
-      doc.setFont(undefined, 'bold');
-      doc.text("Date",        14,  y);
-      doc.text("Dir",         40,  y);
-      doc.text("Counterparty",55,  y);
-      doc.text("Product",     110, y);
-      doc.text("Qty",         160, y, { align:'right' });
-      doc.text("Unit",        172, y);
-      doc.text("Cost",        192, y, { align:'right' });
-      // new line for totals column
-      y += 6;
-      doc.text("Line Total",  196, y, { align:'right' }); // label; we’ll print values on each row too
-      y -= 6;
-      doc.setFont(undefined, 'normal');
+      // Table layout (monospace makes alignment tidy)
+      doc.setFont("courier","bold");
+      doc.setFontSize(11);
+
+      // Column x positions
+      const X = {
+        date: left,      // 14
+        dir:  40,
+        party:55,
+        product: 100,
+        qty: 150,        // right-aligned
+        unit: 165,
+        cost: 180,       // right-aligned
+        total: right     // 200, right-aligned
+      };
+
+      let y = 64;
+      doc.text("Date",        X.date,   y);
+      doc.text("Dir",         X.dir,    y);
+      doc.text("Counterparty",X.party,  y);
+      doc.text("Product",     X.product,y);
+      doc.text("Qty",         X.qty,    y, { align:"right" });
+      doc.text("Unit",        X.unit,   y);
+      doc.text("Cost",        X.cost,   y, { align:"right" });
+      doc.text("Line Total",  X.total,  y, { align:"right" });
+
+      doc.setFont("courier","normal");
 
       // Rows
-      rows.forEach(r => {
-        y += 6;
-        if (y > 270) { doc.addPage(); y = 20; }
-        doc.text(String(r.date),             14,  y);
-        doc.text(r.direction,                40,  y);
-        doc.text(String(r.counterparty).slice(0,24), 55, y);
-        doc.text(String(r.product).slice(0,26),     110, y);
-        doc.text(String(r.qty),             160,  y, { align:'right' });
-        doc.text(String(r.unit),            172,  y);
-        doc.text(`$${r.cpu.toFixed(2)}`,    192,  y, { align:'right' });
-        // signed line total
-        const val = (r.lineValue >= 0 ? "" : "-") + `$${Math.abs(r.lineValue).toFixed(2)}`;
-        doc.text(val,                       196,  y, { align:'right' });
-      });
+      y += rowH;
+      for (const r of rows){
+        if (y > 270){ doc.addPage(); y = 20; } // page break
+
+        const partyTxt   = clip(r.counterparty, 22);
+        const productTxt = clip(r.product, 28);
+        const costTxt    = `$${r.cpu.toFixed(2)}`;
+        const lineVal    = (r.lineValue >= 0 ? "" : "-") + `$${Math.abs(r.lineValue).toFixed(2)}`;
+
+        doc.text(String(r.date),     X.date,   y);
+        doc.text(r.direction,        X.dir,    y);
+        doc.text(partyTxt,           X.party,  y);
+        doc.text(productTxt,         X.product,y);
+        doc.text(String(r.qty),      X.qty,    y, { align:"right" });
+        doc.text(String(r.unit),     X.unit,   y);
+        doc.text(costTxt,            X.cost,   y, { align:"right" });
+        doc.text(lineVal,            X.total,  y, { align:"right" });
+
+        y += rowH;
+      }
 
       // Totals block
-      y += 10;
-      if (y > 270) { doc.addPage(); y = 20; }
-      doc.setFont(undefined, 'bold');
+      y += 8;
+      if (y > 270){ doc.addPage(); y = 20; }
+      doc.setFont("courier","bold");
       const incTxt = `$${Math.abs(incomingTotal).toFixed(2)}`;
       const outTxt = `-$${Math.abs(outgoingTotal).toFixed(2)}`;
       const netTxt = (netTotal >= 0 ? "" : "-") + `$${Math.abs(netTotal).toFixed(2)}`;
-      doc.text(`Incoming Total: ${incTxt}`, 150, y, { align:'right' });
-      y += 6;
-      doc.text(`Outgoing Total: ${outTxt}`, 150, y, { align:'right' });
-      y += 6;
-      doc.text(`Net Total: ${netTxt}`,      150, y, { align:'right' });
-      doc.setFont(undefined, 'normal');
+      doc.text(`Incoming Total: ${incTxt}`, X.cost, y, { align:"right" });
+      y += rowH;
+      doc.text(`Outgoing Total: ${outTxt}`, X.cost, y, { align:"right" });
+      y += rowH;
+      doc.text(`Net Total: ${netTxt}`,      X.cost, y, { align:"right" });
 
-      showPDFInModal(doc, `Invoice_${loc}_${s}_${e}.pdf`);
+      // show
+      const filename = `Invoice_${loc}_${s}_${e}.pdf`;
+      const blobUri = doc.output("bloburi");
+      $("invoice-iframe").src = blobUri;
+      $("invoice-modal").style.display = "block";
+      window.__lastPDF = doc;
+      window.__lastPDFName = filename;
     }
+    // ------------------------------------------------------------------------
 
-    // ----- Month nav & Excel export -----
     function changeMonth(offset){
       const [y,m] = selectedMonth.split("-").map(Number);
       const d = new Date(y, m-1+offset);
@@ -598,7 +481,7 @@
         });
         XLSX.writeFile(wb,`Report_${$("report-start").value}_${$("report-end").value}.xlsx`);
       }).catch(e=>{
-        console.error("Export range failed", e);
+        console.error("Export by date failed", e);
         alert("Export by date failed (check connection).");
       });
     }
@@ -606,7 +489,7 @@
     // Bootstrap
     setupUI();
 
-    // ----- AUTO LOGOUT AFTER 10 MINUTES IDLE -----
+    // Auto-logout after 10 minutes idle
     let idleTimeout;
     function resetIdleTimer(){
       clearTimeout(idleTimeout);
@@ -622,12 +505,13 @@
     });
     resetIdleTimer();
 
-    // ----- LOGOUT ON PAGE CLOSE -----
+    // Logout on page close
     window.addEventListener("beforeunload", ()=>{
       if(isAdmin()) setAdmin(false);
     });
   </script>
 </body>
 </html>
+
 
 
