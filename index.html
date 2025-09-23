@@ -98,14 +98,13 @@
     <button class="main inline" type="button" onclick="exportDateRange()">Download Report by Date</button>
   </div>
 
-  <!-- Date-range invoice builder -->
+  <!-- Location + date-range invoice builder -->
   <div class="admin-only" style="margin-top:14px;">
-    <div class="muted" style="margin-bottom:6px;">Build an invoice for all transfers between the selected locations within a date range.</div>
-    <label class="inline">Invoice From: <select id="inv-from"></select></label>
-    <label class="inline">Invoice To:   <select id="inv-to"></select></label>
+    <div class="muted" style="margin-bottom:6px;">Build an invoice for all transfers (in & out) for one location within a date range.</div>
+    <label class="inline">Location: <select id="inv-loc"></select></label>
     <label class="inline">Start: <input type="date" id="inv-start"></label>
     <label class="inline">End:   <input type="date" id="inv-end"></label>
-    <button class="main inline" type="button" id="build-range-invoice">Create Invoice (Date Range)</button>
+    <button class="main inline" type="button" id="build-range-invoice">Create Invoice (By Location & Date Range)</button>
   </div>
 
   <!-- Invoice Modal -->
@@ -196,9 +195,8 @@
       fillLocationSelect($("from"));
       fillLocationSelect($("to"));
 
-      // Range-invoice selects
-      fillLocationSelect($("inv-from"));
-      fillLocationSelect($("inv-to"));
+      // Range-invoice select
+      fillLocationSelect($("inv-loc"));
 
       $("add-item-btn").addEventListener("click", addItem);
       $("submit-btn").addEventListener("click", addTransfer);
@@ -381,7 +379,7 @@
       }
     }
 
-    // ----- Invoice (single transfer) – no email, manual download/print -----
+    // ----- Invoice (single transfer) – manual download/print -----
     async function openInvoice(store,month,key){
       const snap = await db.ref(`logs/${store}/${month}/${key}`).once("value").catch(()=>null);
       const log = snap?.val();
@@ -427,43 +425,43 @@
       window.__lastPDFName = filename;
     }
 
-    // ----- Date-range invoice (aggregates many transfers) -----
+    // ----- Location + date-range invoice (includes IN & OUT) -----
     async function buildRangeInvoice(){
-      const from = $("inv-from").value;
-      const to   = $("inv-to").value;
-      const s    = $("inv-start").value;
-      const e    = $("inv-end").value;
-      if(!from || !to || from===to) return alert("Choose different locations for From and To.");
+      const loc = $("inv-loc").value;
+      const s   = $("inv-start").value;
+      const e   = $("inv-end").value;
+      if(!loc) return alert("Choose a location.");
       if(!s || !e) return alert("Choose a start and end date.");
       const start = new Date(s);
       const end   = new Date(e);
       if (end < start) return alert("End date must be after start date.");
 
-      // We only read the OUTGOING store branch (avoid double counting)
-      let rows = []; // {date, product, qty, unit, cpu, total, comment}
+      let rows = []; // each transfer affecting 'loc'
       try{
-        const storeRef = db.ref(`logs/${from}`);
+        const storeRef = db.ref(`logs/${loc}`);
         const snap = await storeRef.once("value");
         if (snap.exists()) {
           snap.forEach(monthSnap => {
             monthSnap.forEach(logSnap => {
               const l = logSnap.val();
-              // choose only outgoing lines from 'from' store where amount < 0 and matches to
-              if (l && l.to === to && l.amount < 0) {
-                const d = new Date(l.date);
-                if (d >= start && d <= end) {
-                  const cpu = Number.isFinite(l.costPerUnit) ? Number(l.costPerUnit) : 0;
-                  const qty = Math.abs(l.amount);
-                  rows.push({
-                    date: l.date,
-                    product: l.product,
-                    qty,
-                    unit: l.unit,
-                    cpu,
-                    total: +(qty * cpu).toFixed(2),
-                    comment: l.comment || ""
-                  });
-                }
+              if (!l) return;
+              const d = new Date(l.date);
+              if (d >= start && d <= end) {
+                const cpu = Number.isFinite(l.costPerUnit) ? Number(l.costPerUnit) : 0;
+                const amt = Number(l.amount) || 0; // +incoming, -outgoing relative to loc
+                const counterparty = amt < 0 ? l.to : l.from;
+                rows.push({
+                  date: l.date,
+                  direction: amt < 0 ? "Out" : "In",
+                  counterparty,
+                  product: l.product,
+                  qty: Math.abs(amt),
+                  signedQty: amt,     // for display if desired
+                  unit: l.unit,
+                  cpu,
+                  lineValue: +(amt * cpu).toFixed(2), // signed line total
+                  comment: l.comment || ""
+                });
               }
             });
           });
@@ -474,30 +472,25 @@
       }
 
       if (rows.length === 0) {
-        return alert("No transfers found for that range and location pair.");
+        return alert("No transfers found for that location & date range.");
       }
 
-      // Optional: group same product lines
-      const grouped = {};
-      for (const r of rows) {
-        const key = r.product + "|" + r.unit + "|" + r.cpu;
-        if (!grouped[key]) grouped[key] = { product:r.product, unit:r.unit, cpu:r.cpu, qty:0, total:0, lines:[] };
-        grouped[key].qty += r.qty;
-        grouped[key].total = +(grouped[key].total + r.total).toFixed(2);
-        grouped[key].lines.push(r);
-      }
-      const items = Object.values(grouped);
-      const grandTotal = items.reduce((s,i)=>s+i.total, 0).toFixed(2);
+      // Sort by date
+      rows.sort((a,b)=> a.date.localeCompare(b.date));
+
+      // Totals
+      const incomingTotal = rows.filter(r=>r.direction==="In").reduce((s,r)=>s + r.lineValue, 0);
+      const outgoingTotal = rows.filter(r=>r.direction==="Out").reduce((s,r)=>s + r.lineValue, 0);
+      const netTotal      = +(incomingTotal + outgoingTotal).toFixed(2); // outgoingTotal is negative numbers
 
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
 
       // Header
-      doc.setFontSize(16).text(`Invoice (Summary)`, 20, 20);
+      doc.setFontSize(16).text(`Invoice (All Transfers for ${loc})`, 20, 20);
       doc.setFontSize(12);
       const hdr = [
-        `From: ${from}`,
-        `To:   ${to}`,
+        `Location: ${loc}`,
         `Range: ${s} to ${e}`,
         `Generated: ${new Date().toISOString().slice(0,19).replace('T',' ')}`
       ];
@@ -506,33 +499,50 @@
       // Table headers
       let y = 65;
       doc.setFont(undefined, 'bold');
-      doc.text("Product", 20, y);
-      doc.text("Qty",     100, y);
-      doc.text("Unit",    120, y);
-      doc.text("Cost",    140, y);
-      doc.text("Total",   165, y);
-      doc.setFont(undefined, 'normal');
+      doc.text("Date",        14,  y);
+      doc.text("Dir",         40,  y);
+      doc.text("Counterparty",55,  y);
+      doc.text("Product",     110, y);
+      doc.text("Qty",         160, y, { align:'right' });
+      doc.text("Unit",        172, y);
+      doc.text("Cost",        192, y, { align:'right' });
+      // new line for totals column
       y += 6;
+      doc.text("Line Total",  196, y, { align:'right' }); // label; we’ll print values on each row too
+      y -= 6;
+      doc.setFont(undefined, 'normal');
 
       // Rows
-      items.forEach(it => {
-        if (y > 270) { doc.addPage(); y = 20; }
-        doc.text(String(it.product), 20, y);
-        doc.text(String(it.qty),     100, y, { align: 'right' });
-        doc.text(String(it.unit),    120, y);
-        doc.text(`$${it.cpu.toFixed(2)}`, 140, y, { align: 'right' });
-        doc.text(`$${it.total.toFixed(2)}`,165, y, { align: 'right' });
+      rows.forEach(r => {
         y += 6;
+        if (y > 270) { doc.addPage(); y = 20; }
+        doc.text(String(r.date),             14,  y);
+        doc.text(r.direction,                40,  y);
+        doc.text(String(r.counterparty).slice(0,24), 55, y);
+        doc.text(String(r.product).slice(0,26),     110, y);
+        doc.text(String(r.qty),             160,  y, { align:'right' });
+        doc.text(String(r.unit),            172,  y);
+        doc.text(`$${r.cpu.toFixed(2)}`,    192,  y, { align:'right' });
+        // signed line total
+        const val = (r.lineValue >= 0 ? "" : "-") + `$${Math.abs(r.lineValue).toFixed(2)}`;
+        doc.text(val,                       196,  y, { align:'right' });
       });
 
-      // Grand total
-      y += 4;
+      // Totals block
+      y += 10;
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFont(undefined, 'bold');
-      doc.text(`Grand Total: $${grandTotal}`, 165, y, { align: 'right' });
+      const incTxt = `$${Math.abs(incomingTotal).toFixed(2)}`;
+      const outTxt = `-$${Math.abs(outgoingTotal).toFixed(2)}`;
+      const netTxt = (netTotal >= 0 ? "" : "-") + `$${Math.abs(netTotal).toFixed(2)}`;
+      doc.text(`Incoming Total: ${incTxt}`, 150, y, { align:'right' });
+      y += 6;
+      doc.text(`Outgoing Total: ${outTxt}`, 150, y, { align:'right' });
+      y += 6;
+      doc.text(`Net Total: ${netTxt}`,      150, y, { align:'right' });
       doc.setFont(undefined, 'normal');
 
-      showPDFInModal(doc, `Invoice_${from}_to_${to}_${s}_${e}.pdf`);
+      showPDFInModal(doc, `Invoice_${loc}_${s}_${e}.pdf`);
     }
 
     // ----- Month nav & Excel export -----
@@ -619,4 +629,5 @@
   </script>
 </body>
 </html>
+
 
