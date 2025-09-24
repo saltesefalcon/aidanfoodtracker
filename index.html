@@ -189,6 +189,19 @@
     auth.onAuthStateChanged(u => {
       setAdmin(!!u);
     });
+        
+    (function writeProbe(){
+      const statusEl = document.getElementById('fb-status');
+      const ref = firebase.database().ref('__probe').push();
+      ref.set({ ts: Date.now() })
+        .then(() => ref.remove())
+        .catch(e => {
+          console.error('Probe write blocked:', e);
+          alert('Database write blocked: ' + (e?.code || e?.message || e));
+          if (statusEl) statusEl.innerHTML = 'Firebase: <strong class="err">connected (no write)</strong>';
+        });
+    })();
+
 
     // ----- Static data -----
     const locations = ["Prohibition","Tulia Osteria","Ce Soir","Beacon"];
