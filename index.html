@@ -123,10 +123,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <script>
-    const ADMIN_PASSWORD = "SuperSecret123";
     function $(id){ return document.getElementById(id); }
 
     // ----- Initialize Firebase -----
@@ -141,6 +141,7 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    const auth = firebase.auth();
 
     // Firebase connectivity indicator
     (function watchFirebaseConnection(){
@@ -155,26 +156,46 @@
       });
     })();
 
+    // Auth-driven admin toggle
+    function setAdmin(isOn){
+      document.body.classList.toggle("admin", !!isOn);
+      const btn = $("login-btn");
+      btn.textContent = isOn ? "Logout" : "Login";
+      btn.classList.toggle("logout", isOn);
+      loadLogs();
+    }
+
+    // Login/Logout with Firebase Auth (prompts for email + password)
+    $("login-btn").addEventListener("click", async ()=>{
+      const user = auth.currentUser;
+      if (user) {
+        await auth.signOut();
+        setAdmin(false);
+        return;
+      }
+      const email = prompt("Admin email:");
+      if (!email) return;
+      const pw = prompt("Password:");
+      if (pw == null) return;
+      try {
+        await auth.signInWithEmailAndPassword(email.trim(), pw);
+        // setAdmin will be called from onAuthStateChanged below
+      } catch (e) {
+        console.error(e);
+        alert("Login failed. Check email/password or account access.");
+      }
+    });
+
+    auth.onAuthStateChanged(u => {
+      setAdmin(!!u);
+    });
+
+    // ----- Static data -----
     const locations = ["Prohibition","Tulia Osteria","Ce Soir","Beacon"];
     const units     = ["oz","lb","kg","fl oz","ml","L"];
     let selectedMonth = new Date().toISOString().slice(0,7);
 
-    function isAdmin(){ return localStorage.getItem("isAdmin")==="true"; }
-    function setAdmin(v){
-      localStorage.setItem("isAdmin", v?"true":"false");
-      document.body.classList.toggle("admin", v);
-      const btn = $("login-btn");
-      btn.textContent = v ? "Logout" : "Login";
-      btn.classList.toggle("logout", v);
-      loadLogs();
-    }
-    $("login-btn").addEventListener("click", ()=>{
-      if(isAdmin()) return setAdmin(false);
-      const pw = prompt("Enter admin password:");
-      if(pw===ADMIN_PASSWORD) setAdmin(true);
-      else alert("Incorrect password.");
-    });
-
+    // ----- Setup UI on load -----
     function fillLocationSelect(sel){
       locations.forEach(loc=>{ const o=document.createElement("option"); o.value=o.textContent=loc; sel.appendChild(o); });
     }
@@ -186,7 +207,6 @@
       $("add-item-btn").addEventListener("click", addItem);
       $("submit-btn").addEventListener("click", addTransfer);
       addItem();
-      setAdmin(isAdmin());
       const today = new Date().toISOString().slice(0,10);
       $("report-start").value = today;
       $("report-end").value   = today;
@@ -489,14 +509,15 @@
     // Bootstrap
     setupUI();
 
-    // Auto-logout after 10 minutes idle
+    // Auto-logout after 10 minutes idle (UI only; DB writes already require Auth)
     let idleTimeout;
     function resetIdleTimer(){
       clearTimeout(idleTimeout);
-      idleTimeout = setTimeout(()=>{
-        if(isAdmin()){
-          alert("You have been logged out due to 10 minutes of inactivity.");
+      idleTimeout = setTimeout(async ()=>{
+        if(auth.currentUser){
+          await auth.signOut();
           setAdmin(false);
+          alert("You have been logged out due to 10 minutes of inactivity.");
         }
       },10*60*1000);
     }
@@ -506,12 +527,13 @@
     resetIdleTimer();
 
     // Logout on page close
-    window.addEventListener("beforeunload", ()=>{
-      if(isAdmin()) setAdmin(false);
+    window.addEventListener("beforeunload", async ()=>{
+      if(auth.currentUser){ await auth.signOut(); }
     });
   </script>
 </body>
 </html>
+
 
 
 
