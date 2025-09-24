@@ -351,7 +351,7 @@
   loadLogs();
 }
 
-// ------- Location + Date Range Invoice (10x8in landscape, ultra-compact) -------
+// ------- Location + Date Range Invoice (10x8in landscape, tighter columns, bottom totals) -------
 async function buildRangeInvoice(){
   const loc = $("inv-loc").value;
   const s   = $("inv-start").value;
@@ -361,15 +361,14 @@ async function buildRangeInvoice(){
   const start = new Date(s), end = new Date(e);
   if(end < start) return alert("End date must be after start date.");
 
-  // collect rows (both directions relative to loc)
+  // collect rows
   let rows = [];
   try{
     const snap = await db.ref(`logs/${loc}`).once("value");
     if (snap.exists()) {
       snap.forEach(monthSnap => {
         monthSnap.forEach(logSnap => {
-          const l = logSnap.val();
-          if (!l) return;
+          const l = logSnap.val(); if (!l) return;
           const d = new Date(l.date);
           if (d >= start && d <= end) {
             const cpu = Number.isFinite(l.costPerUnit) ? Number(l.costPerUnit) : 0;
@@ -390,8 +389,8 @@ async function buildRangeInvoice(){
       });
     }
   }catch(err){
-    console.error("Failed to read logs for range invoice", err);
-    return alert("Could not read transfers to build invoice (check rules/connection).");
+    console.error("Range invoice read failed", err);
+    return alert("Could not read transfers to build invoice.");
   }
   if (!rows.length) return alert("No transfers found.");
 
@@ -399,77 +398,64 @@ async function buildRangeInvoice(){
   rows.sort((a,b)=> a.date.localeCompare(b.date));
   const incomingTotal = rows.filter(r=>r.direction==="In").reduce((s,r)=>s + r.lineValue, 0);
   const outgoingTotal = rows.filter(r=>r.direction==="Out").reduce((s,r)=>s + r.lineValue, 0);
-  const netTotal      = +(incomingTotal + outgoingTotal).toFixed(2); // outgoing is negative
+  const netTotal      = +(incomingTotal + outgoingTotal).toFixed(2);
 
-  // -------- PDF layout (10x8 inches, landscape) --------
+  // --- PDF: 10x8 in landscape ---
   const { jsPDF } = window.jspdf;
   const W_IN = 10, H_IN = 8;
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [W_IN*72, H_IN*72] });
 
-  // tighter margins + smaller fonts
-  const M = 24;                 // ~1/3 inch margin
+  const M = 24; // compact margins
   const pageW = W_IN*72, pageH = H_IN*72;
 
   // header
-  doc.setFont("helvetica","bold");
-  doc.setFontSize(16);
+  doc.setFont("helvetica","bold");  doc.setFontSize(16);
   doc.text(`Invoice (All Transfers for ${loc})`, M, M+6);
+  doc.setFont("helvetica","normal"); doc.setFontSize(10);
+  [`Location: ${loc}`, `Range: ${s} to ${e}`, `Generated: ${new Date().toISOString().slice(0,19).replace('T',' ')}`]
+    .forEach((t,i)=> doc.text(t, M, M+28 + i*14));
 
-  doc.setFont("helvetica","normal");
-  doc.setFontSize(10);
-  const headerLines = [
-    `Location: ${loc}`,
-    `Range: ${s} to ${e}`,
-    `Generated: ${new Date().toISOString().slice(0,19).replace('T',' ')}`
-  ];
-  headerLines.forEach((t,i)=> doc.text(t, M, M+28 + i*14));
-
-  // columns (Qty + Unit combined; Product pulled closer to Counterparty)
-  // widths in points; 72pt ≈ 1 inch
+  // --- tighter columns (product closer; right money columns pulled left) ---
+  // Qty+Unit combined to free space
   const cols = [
-    { key:"date",        label:"Date",         w: 88,  align:"left"  },
-    { key:"direction",   label:"Dir",          w: 40,  align:"left"  },
-    { key:"counterparty",label:"Counterparty", w: 190, align:"left"  },
-    { key:"product",     label:"Product",      w: 170, align:"left"  }, // closer to counterparty
-    { key:"qtyunit",     label:"Qty/Unit",     w: 82,  align:"right" }, // e.g., "5 oz"
-    { key:"cpu",         label:"Unit $",       w: 78,  align:"right" },
-    { key:"lineValue",   label:"Total $",      w: 90,  align:"right" }
+    { key:"date",        label:"Date",         w: 86,  align:"left"  },
+    { key:"direction",   label:"Dir",          w: 38,  align:"left"  },
+    { key:"counterparty",label:"Counterparty", w: 186, align:"left"  },
+    { key:"product",     label:"Product",      w: 136, align:"left"  }, // closer to counterparty
+    { key:"qtyunit",     label:"Qty/Unit",     w: 70,  align:"right" }, // e.g., "5 oz"
+    { key:"cpu",         label:"Unit $",       w: 66,  align:"right" },
+    { key:"lineValue",   label:"Total $",      w: 84,  align:"right" }
   ];
 
-  // compute x positions
   let x = M, y = M + 86;
   const colX = cols.map(c => { const cx = x; x += c.w; return cx; });
 
-  // table fonts (monospace helps alignment)
-  doc.setFont("courier","bold");
-  doc.setFontSize(9.5);
-  cols.forEach((c, i) => {
-    const opts = c.align === "right" ? {align:"right"} : undefined;
+  // headers (monospace for alignment)
+  doc.setFont("courier","bold"); doc.setFontSize(9.5);
+  cols.forEach((c,i)=>{
     const hx = c.align === "right" ? colX[i] + c.w : colX[i];
-    doc.text(c.label, hx, y, opts);
+    doc.text(c.label, hx, y, c.align === "right" ? {align:"right"} : undefined);
   });
 
-  doc.setFont("courier","normal");
-  doc.setFontSize(9.5);
-  const rowH = 14;
-  y += rowH;
+  // rows
+  doc.setFont("courier","normal"); doc.setFontSize(9.5);
+  const rowH = 14; y += rowH;
+  const tableRight = colX[colX.length-1] + cols[cols.length-1].w;
 
-  function clip(str, wPts){
-    const maxChars = Math.floor(wPts / 5.8); // courier ≈ 5.8pt/char at 9.5pt
+  const clip = (str, wPts) => {
+    const maxChars = Math.floor(wPts / 5.8); // courier ~5.8pt/char at 9.5pt
     const s = String(str ?? "");
     return s.length > maxChars ? s.slice(0, maxChars-1) + "…" : s;
-  }
+  };
 
-  // rows
-  rows.forEach(r => {
-    if (y > pageH - M*2) { // page break
+  rows.forEach(r=>{
+    if (y > pageH - M*4) { // leave space for totals at bottom
       doc.addPage({orientation:"landscape", unit:"pt", format:[W_IN*72, H_IN*72]});
-      y = M;
+      y = M; // reprint header row
       doc.setFont("courier","bold"); doc.setFontSize(9.5);
-      cols.forEach((c, i) => {
-        const opts = c.align === "right" ? {align:"right"} : undefined;
+      cols.forEach((c,i)=>{
         const hx = c.align === "right" ? colX[i] + c.w : colX[i];
-        doc.text(c.label, hx, y, opts);
+        doc.text(c.label, hx, y, c.align === "right" ? {align:"right"} : undefined);
       });
       doc.setFont("courier","normal"); doc.setFontSize(9.5);
       y += rowH;
@@ -480,31 +466,28 @@ async function buildRangeInvoice(){
       r.date,
       r.direction,
       clip(r.counterparty, cols[2].w),
-      clip(r.product, cols[3].w),
+      clip(r.product,      cols[3].w),
       qtyUnit,
       `$${Number(r.cpu||0).toFixed(2)}`,
       (r.lineValue >= 0 ? "" : "-") + `$${Math.abs(r.lineValue).toFixed(2)}`
     ];
 
-    values.forEach((val, i) => {
+    values.forEach((val,i)=>{
       const c = cols[i];
-      const opts = c.align === "right" ? {align:"right"} : undefined;
       const tx = c.align === "right" ? colX[i] + c.w : colX[i];
-      doc.text(String(val), tx, y, opts);
+      doc.text(String(val), tx, y, c.align === "right" ? {align:"right"} : undefined);
     });
 
     y += rowH;
   });
 
-  // totals block (right aligned to table edge)
-  y += rowH;
-  doc.setFont("courier","bold");
-  doc.setFontSize(10.5);
-  const tableRight = colX[colX.length-1] + cols[cols.length-1].w;
-  const t = (label, val) => doc.text(`${label}: ${val}`, tableRight, y, {align:"right"});
-  t("Incoming Total", `$${Math.abs(incomingTotal).toFixed(2)}`); y += rowH;
-  t("Outgoing Total", `-$${Math.abs(outgoingTotal).toFixed(2)}`); y += rowH;
-  t("Net Total",      (netTotal >= 0 ? "" : "-") + `$${Math.abs(netTotal).toFixed(2)}`);
+  // --- totals: drop to near bottom, aligned with Total $ column (same X) ---
+  y = Math.max(y + rowH, pageH - M - rowH*3); // push near bottom
+  doc.setFont("courier","bold"); doc.setFontSize(10.5);
+  const put = (label, val) => doc.text(`${label}: ${val}`, tableRight, y, {align:"right"});
+  put("Incoming Total", `$${Math.abs(incomingTotal).toFixed(2)}`); y += rowH;
+  put("Outgoing Total", `-$${Math.abs(outgoingTotal).toFixed(2)}`); y += rowH;
+  put("Net Total",      (netTotal >= 0 ? "" : "-") + `$${Math.abs(netTotal).toFixed(2)}`);
 
   // show
   const filename = `Invoice_${loc}_${s}_${e}.pdf`;
@@ -514,8 +497,6 @@ async function buildRangeInvoice(){
   window.__lastPDF = doc;
   window.__lastPDFName = filename;
 }
-
-
 
     // ------------------------------------------------------------------------
 
