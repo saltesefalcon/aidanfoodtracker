@@ -352,8 +352,7 @@
 }
 
 
-    // ------- Location + Date Range Invoice (monospace, clean columns) -------
-// ------- Location + Date Range Invoice (10x8 in, landscape, clean columns) -------
+// ------- Location + Date Range Invoice (10x8 in, landscape, compact columns) -------
 async function buildRangeInvoice(){
   const loc = $("inv-loc").value;
   const s   = $("inv-start").value;
@@ -406,53 +405,45 @@ async function buildRangeInvoice(){
   // -------- PDF layout (10x8 inches, landscape) --------
   const { jsPDF } = window.jspdf;
   const W_IN = 10, H_IN = 8;
-  // Use points to keep numbers nice: 1 in = 72 pt. 10x8 in -> 720x576 pt.
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [W_IN*72, H_IN*72] });
 
   // margins & sizing
   const M = 36;                 // 0.5 in margin
   const pageW = W_IN*72, pageH = H_IN*72;
-  const contentW = pageW - M*2;
 
   // header
   doc.setFont("helvetica","bold");
-  doc.setFontSize(20);
-  doc.text(`Invoice (All Transfers for ${loc})`, M, M+10);
+  doc.setFontSize(18); // smaller title
+  doc.text(`Invoice (All Transfers for ${loc})`, M, M+8);
 
   doc.setFont("helvetica","normal");
-  doc.setFontSize(12);
+  doc.setFontSize(11); // slightly smaller meta
   const headerLines = [
     `Location: ${loc}`,
     `Range: ${s} to ${e}`,
     `Generated: ${new Date().toISOString().slice(0,19).replace('T',' ')}`
   ];
-  headerLines.forEach((t,i)=> doc.text(t, M, M+40 + i*18));
+  headerLines.forEach((t,i)=> doc.text(t, M, M+34 + i*16));
 
-  // table columns (fixed widths so headers never collide)
-  // total width ~ contentW; adjust widths here if you need more/less space
-const cols = [
-  { key:"date",        label:"Date",        w: 100, align:"left"  },
-  { key:"direction",   label:"Dir",         w: 50,  align:"left"  },
-  { key:"counterparty",label:"Counterparty",w: 200, align:"left"  },
-  { key:"product",     label:"Product",     w: 180, align:"left"  },
-  { key:"qty",         label:"Qty",         w: 70,  align:"right" },
-  { key:"unit",        label:"Unit",        w: 80,  align:"left"  },
-  { key:"cpu",         label:"Unit $",      w: 100, align:"right" },
-  { key:"lineValue",   label:"Line Total",  w: 120, align:"right" }
-];
-
+  // table columns (compact widths; product pulled closer to counterparty)
+  const cols = [
+    { key:"date",        label:"Date",        w:  96, align:"left"  }, // YYYY-MM-DD fits
+    { key:"direction",   label:"Dir",         w:  46, align:"left"  },
+    { key:"counterparty",label:"Counterparty",w: 210, align:"left"  },
+    { key:"product",     label:"Product",     w: 150, align:"left"  }, // closer to counterparty
+    { key:"qty",         label:"Qty",         w:  60, align:"right" },
+    { key:"unit",        label:"Unit",        w:  60, align:"left"  },
+    { key:"cpu",         label:"Unit $",      w:  88, align:"right" },
+    { key:"lineValue",   label:"Total $",     w: 108, align:"right" }
+  ];
 
   // compute x positions
-  let x = M, y = M + 110;
-  const colX = cols.map(c => {
-    const currentX = x;
-    x += c.w;
-    return currentX;
-  });
+  let x = M, y = M + 102;
+  const colX = cols.map(c => { const cx = x; x += c.w; return cx; });
 
-  // header row (use monospace for perfect alignment)
+  // header row (use monospace for alignment)
   doc.setFont("courier","bold");
-  doc.setFontSize(12);
+  doc.setFontSize(10);
   cols.forEach((c, i) => {
     const opts = c.align === "right" ? {align:"right"} : undefined;
     const hx = c.align === "right" ? colX[i] + c.w : colX[i];
@@ -460,28 +451,29 @@ const cols = [
   });
 
   doc.setFont("courier","normal");
-  const rowH = 18;
+  doc.setFontSize(10); // data rows smaller
+  const rowH = 16;
   y += rowH;
 
   function clip(str, wPts){
-    const maxChars = Math.floor(wPts / 7.2); // rough width per char in courier 12pt
+    // courier ~ 6pt per char at 10pt; keep a little margin
+    const maxChars = Math.floor(wPts / 6.2);
     const s = String(str ?? "");
     return s.length > maxChars ? s.slice(0, maxChars-1) + "…" : s;
   }
 
   // rows
   rows.forEach(r => {
-    if (y > pageH - M*2) { // simple page break
+    if (y > pageH - M*2) { // page break
       doc.addPage({orientation:"landscape", unit:"pt", format:[W_IN*72, H_IN*72]});
-      y = M; // leave top margin
-      // redraw header on new page
-      doc.setFont("courier","bold"); doc.setFontSize(12);
+      y = M; 
+      doc.setFont("courier","bold"); doc.setFontSize(10);
       cols.forEach((c, i) => {
         const opts = c.align === "right" ? {align:"right"} : undefined;
         const hx = c.align === "right" ? colX[i] + c.w : colX[i];
         doc.text(c.label, hx, y, opts);
       });
-      doc.setFont("courier","normal");
+      doc.setFont("courier","normal"); doc.setFontSize(10);
       y += rowH;
     }
 
@@ -498,7 +490,7 @@ const cols = [
 
     values.forEach((val, i) => {
       const c = cols[i];
-      const txt = (i<=3) ? clip(val, c.w) : val;        // clip only textual columns
+      const txt = (i<=3) ? clip(val, c.w) : val;        // clip only text columns
       const opts = c.align === "right" ? {align:"right"} : undefined;
       const tx = c.align === "right" ? colX[i] + c.w : colX[i];
       doc.text(txt, tx, y, opts);
@@ -507,11 +499,12 @@ const cols = [
     y += rowH;
   });
 
-  // totals
+  // totals (right aligned to table's right edge)
   y += rowH;
   doc.setFont("courier","bold");
-  const rightCol = colX[colX.length-1] + cols[cols.length-1].w; // right edge of table
-  const t = (label, val) => doc.text(`${label}: ${val}`, rightCol, y, {align:"right"});
+  doc.setFontSize(11);
+  const tableRight = colX[colX.length-1] + cols[cols.length-1].w;
+  const t = (label, val) => doc.text(`${label}: ${val}`, tableRight, y, {align:"right"});
   t("Incoming Total", `$${Math.abs(incomingTotal).toFixed(2)}`); y += rowH;
   t("Outgoing Total", `-$${Math.abs(outgoingTotal).toFixed(2)}`); y += rowH;
   t("Net Total",      (netTotal >= 0 ? "" : "-") + `$${Math.abs(netTotal).toFixed(2)}`);
@@ -524,6 +517,7 @@ const cols = [
   window.__lastPDF = doc;
   window.__lastPDFName = filename;
 }
+
 
     // ------------------------------------------------------------------------
 
