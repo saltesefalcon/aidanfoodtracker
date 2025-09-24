@@ -401,11 +401,14 @@
       const incomingTotal = rows.filter(r=>r.direction==="In").reduce((s,r)=>s + r.lineValue, 0);
       const outgoingTotal = rows.filter(r=>r.direction==="Out").reduce((s,r)=>s + r.lineValue, 0);
       const netTotal      = +(incomingTotal + outgoingTotal).toFixed(2); // outgoing is negative
-
+      
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();                 // A4 width ≈ 210mm
-      const left = 14, right = 200;            // printable bounds
-      const rowH = 6;
+      // [orientation, unit, format]
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "in",
+        format: [10, 8]   // width=10in, height=8in
+      });
 
       function clip(str,max){ str = String(str ?? ""); return str.length>max ? str.slice(0,max-1)+"…" : str; }
 
