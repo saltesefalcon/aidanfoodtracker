@@ -353,145 +353,177 @@
 
 
     // ------- Location + Date Range Invoice (monospace, clean columns) -------
-    async function buildRangeInvoice(){
-      const loc = $("inv-loc").value;
-      const s   = $("inv-start").value;
-      const e   = $("inv-end").value;
-      if(!loc) return alert("Choose a location.");
-      if(!s || !e) return alert("Choose start and end dates.");
-      const start = new Date(s), end = new Date(e);
-      if(end<start) return alert("End date must be after start date.");
+// ------- Location + Date Range Invoice (10x8 in, landscape, clean columns) -------
+async function buildRangeInvoice(){
+  const loc = $("inv-loc").value;
+  const s   = $("inv-start").value;
+  const e   = $("inv-end").value;
+  if(!loc) return alert("Choose a location.");
+  if(!s || !e) return alert("Choose start and end dates.");
+  const start = new Date(s), end = new Date(e);
+  if(end < start) return alert("End date must be after start date.");
 
-      // collect rows (both directions relative to loc)
-      let rows = [];
-      try{
-        const snap = await db.ref(`logs/${loc}`).once("value");
-        if (snap.exists()) {
-          snap.forEach(monthSnap => {
-            monthSnap.forEach(logSnap => {
-              const l = logSnap.val();
-              if (!l) return;
-              const d = new Date(l.date);
-              if (d >= start && d <= end) {
-                const cpu = Number.isFinite(l.costPerUnit) ? Number(l.costPerUnit) : 0;
-                const amt = Number(l.amount) || 0; // +incoming, -outgoing
-                const counterparty = amt < 0 ? l.to : l.from;
-                rows.push({
-                  date: l.date,
-                  direction: amt < 0 ? "Out" : "In",
-                  counterparty,
-                  product: l.product,
-                  qty: Math.abs(amt),
-                  unit: l.unit,
-                  cpu,
-                  lineValue: +(amt * cpu).toFixed(2) // signed
-                });
-              }
+  // collect rows (both directions relative to loc)
+  let rows = [];
+  try{
+    const snap = await db.ref(`logs/${loc}`).once("value");
+    if (snap.exists()) {
+      snap.forEach(monthSnap => {
+        monthSnap.forEach(logSnap => {
+          const l = logSnap.val();
+          if (!l) return;
+          const d = new Date(l.date);
+          if (d >= start && d <= end) {
+            const cpu = Number.isFinite(l.costPerUnit) ? Number(l.costPerUnit) : 0;
+            const amt = Number(l.amount) || 0; // +incoming, -outgoing
+            const counterparty = amt < 0 ? l.to : l.from;
+            rows.push({
+              date: l.date,
+              direction: amt < 0 ? "Out" : "In",
+              counterparty,
+              product: l.product,
+              qty: Math.abs(amt),
+              unit: l.unit,
+              cpu,
+              lineValue: +(amt * cpu).toFixed(2) // signed
             });
-          });
-        }
-      }catch(err){
-        console.error("Failed to read logs for range invoice", err);
-        return alert("Could not read transfers to build invoice (check rules/connection).");
-      }
-      if (!rows.length) return alert("No transfers found.");
-
-      // sort & totals
-      rows.sort((a,b)=> a.date.localeCompare(b.date));
-      const incomingTotal = rows.filter(r=>r.direction==="In").reduce((s,r)=>s + r.lineValue, 0);
-      const outgoingTotal = rows.filter(r=>r.direction==="Out").reduce((s,r)=>s + r.lineValue, 0);
-      const netTotal      = +(incomingTotal + outgoingTotal).toFixed(2); // outgoing is negative
-      
-      const { jsPDF } = window.jspdf;
-      // [orientation, unit, format]
-      const doc = new jsPDF({
-        orientation: "landscape",
-        unit: "in",
-        format: [10, 8]   // width=10in, height=8in
+          }
+        });
       });
-
-      function clip(str,max){ str = String(str ?? ""); return str.length>max ? str.slice(0,max-1)+"…" : str; }
-
-      // Header
-      doc.setFontSize(16).text(`Invoice (All Transfers for ${loc})`, left, 20);
-      doc.setFontSize(12);
-      [
-        `Location: ${loc}`,
-        `Range: ${s} to ${e}`,
-        `Generated: ${new Date().toISOString().slice(0,19).replace('T',' ')}`
-      ].forEach((t,i)=>doc.text(t, left, 30 + 8*i));
-
-      // Table layout (monospace makes alignment tidy)
-      doc.setFont("courier","bold");
-      doc.setFontSize(11);
-
-      // Column x positions
-      const X = {
-        date: left,      // 14
-        dir:  40,
-        party:55,
-        product: 100,
-        qty: 150,        // right-aligned
-        unit: 165,
-        cost: 180,       // right-aligned
-        total: right     // 200, right-aligned
-      };
-
-      let y = 64;
-      doc.text("Date",        X.date,   y);
-      doc.text("Dir",         X.dir,    y);
-      doc.text("Counterparty",X.party,  y);
-      doc.text("Product",     X.product,y);
-      doc.text("Qty",         X.qty,    y, { align:"right" });
-      doc.text("Unit",        X.unit,   y);
-      doc.text("Cost",        X.cost,   y, { align:"right" });
-      doc.text("Line Total",  X.total,  y, { align:"right" });
-
-      doc.setFont("courier","normal");
-
-      // Rows
-      y += rowH;
-      for (const r of rows){
-        if (y > 270){ doc.addPage(); y = 20; } // page break
-
-        const partyTxt   = clip(r.counterparty, 22);
-        const productTxt = clip(r.product, 28);
-        const costTxt    = `$${r.cpu.toFixed(2)}`;
-        const lineVal    = (r.lineValue >= 0 ? "" : "-") + `$${Math.abs(r.lineValue).toFixed(2)}`;
-
-        doc.text(String(r.date),     X.date,   y);
-        doc.text(r.direction,        X.dir,    y);
-        doc.text(partyTxt,           X.party,  y);
-        doc.text(productTxt,         X.product,y);
-        doc.text(String(r.qty),      X.qty,    y, { align:"right" });
-        doc.text(String(r.unit),     X.unit,   y);
-        doc.text(costTxt,            X.cost,   y, { align:"right" });
-        doc.text(lineVal,            X.total,  y, { align:"right" });
-
-        y += rowH;
-      }
-
-      // Totals block
-      y += 8;
-      if (y > 270){ doc.addPage(); y = 20; }
-      doc.setFont("courier","bold");
-      const incTxt = `$${Math.abs(incomingTotal).toFixed(2)}`;
-      const outTxt = `-$${Math.abs(outgoingTotal).toFixed(2)}`;
-      const netTxt = (netTotal >= 0 ? "" : "-") + `$${Math.abs(netTotal).toFixed(2)}`;
-      doc.text(`Incoming Total: ${incTxt}`, X.cost, y, { align:"right" });
-      y += rowH;
-      doc.text(`Outgoing Total: ${outTxt}`, X.cost, y, { align:"right" });
-      y += rowH;
-      doc.text(`Net Total: ${netTxt}`,      X.cost, y, { align:"right" });
-
-      // show
-      const filename = `Invoice_${loc}_${s}_${e}.pdf`;
-      const blobUri = doc.output("bloburi");
-      $("invoice-iframe").src = blobUri;
-      $("invoice-modal").style.display = "block";
-      window.__lastPDF = doc;
-      window.__lastPDFName = filename;
     }
+  }catch(err){
+    console.error("Failed to read logs for range invoice", err);
+    return alert("Could not read transfers to build invoice (check rules/connection).");
+  }
+  if (!rows.length) return alert("No transfers found.");
+
+  // sort & totals
+  rows.sort((a,b)=> a.date.localeCompare(b.date));
+  const incomingTotal = rows.filter(r=>r.direction==="In").reduce((s,r)=>s + r.lineValue, 0);
+  const outgoingTotal = rows.filter(r=>r.direction==="Out").reduce((s,r)=>s + r.lineValue, 0);
+  const netTotal      = +(incomingTotal + outgoingTotal).toFixed(2); // outgoing is negative
+
+  // -------- PDF layout (10x8 inches, landscape) --------
+  const { jsPDF } = window.jspdf;
+  const W_IN = 10, H_IN = 8;
+  // Use points to keep numbers nice: 1 in = 72 pt. 10x8 in -> 720x576 pt.
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [W_IN*72, H_IN*72] });
+
+  // margins & sizing
+  const M = 36;                 // 0.5 in margin
+  const pageW = W_IN*72, pageH = H_IN*72;
+  const contentW = pageW - M*2;
+
+  // header
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(20);
+  doc.text(`Invoice (All Transfers for ${loc})`, M, M+10);
+
+  doc.setFont("helvetica","normal");
+  doc.setFontSize(12);
+  const headerLines = [
+    `Location: ${loc}`,
+    `Range: ${s} to ${e}`,
+    `Generated: ${new Date().toISOString().slice(0,19).replace('T',' ')}`
+  ];
+  headerLines.forEach((t,i)=> doc.text(t, M, M+40 + i*18));
+
+  // table columns (fixed widths so headers never collide)
+  // total width ~ contentW; adjust widths here if you need more/less space
+  const cols = [
+    { key:"date",        label:"Date",      w: 110, align:"left"  }, // YYYY-MM-DD fits
+    { key:"direction",   label:"Dir",       w: 50,  align:"left"  },
+    { key:"counterparty",label:"Counterparty", w: 200, align:"left" },
+    { key:"product",     label:"Product",   w: 160, align:"left"  },
+    { key:"qty",         label:"Qty",       w: 50,  align:"right" },
+    { key:"unit",        label:"Unit",      w: 60,  align:"left"  },
+    { key:"cpu",         label:"Unit $",    w: 70,  align:"right" },
+    { key:"lineValue",   label:"Total $",   w: 90,  align:"right" }
+  ];
+
+  // compute x positions
+  let x = M, y = M + 110;
+  const colX = cols.map(c => {
+    const currentX = x;
+    x += c.w;
+    return currentX;
+  });
+
+  // header row (use monospace for perfect alignment)
+  doc.setFont("courier","bold");
+  doc.setFontSize(12);
+  cols.forEach((c, i) => {
+    const opts = c.align === "right" ? {align:"right"} : undefined;
+    const hx = c.align === "right" ? colX[i] + c.w : colX[i];
+    doc.text(c.label, hx, y, opts);
+  });
+
+  doc.setFont("courier","normal");
+  const rowH = 18;
+  y += rowH;
+
+  function clip(str, wPts){
+    const maxChars = Math.floor(wPts / 7.2); // rough width per char in courier 12pt
+    const s = String(str ?? "");
+    return s.length > maxChars ? s.slice(0, maxChars-1) + "…" : s;
+  }
+
+  // rows
+  rows.forEach(r => {
+    if (y > pageH - M*2) { // simple page break
+      doc.addPage({orientation:"landscape", unit:"pt", format:[W_IN*72, H_IN*72]});
+      y = M; // leave top margin
+      // redraw header on new page
+      doc.setFont("courier","bold"); doc.setFontSize(12);
+      cols.forEach((c, i) => {
+        const opts = c.align === "right" ? {align:"right"} : undefined;
+        const hx = c.align === "right" ? colX[i] + c.w : colX[i];
+        doc.text(c.label, hx, y, opts);
+      });
+      doc.setFont("courier","normal");
+      y += rowH;
+    }
+
+    const values = [
+      r.date,
+      r.direction,
+      r.counterparty,
+      r.product,
+      String(r.qty),
+      r.unit,
+      `$${Number(r.cpu||0).toFixed(2)}`,
+      (r.lineValue >= 0 ? "" : "-") + `$${Math.abs(r.lineValue).toFixed(2)}`
+    ];
+
+    values.forEach((val, i) => {
+      const c = cols[i];
+      const txt = (i<=3) ? clip(val, c.w) : val;        // clip only textual columns
+      const opts = c.align === "right" ? {align:"right"} : undefined;
+      const tx = c.align === "right" ? colX[i] + c.w : colX[i];
+      doc.text(txt, tx, y, opts);
+    });
+
+    y += rowH;
+  });
+
+  // totals
+  y += rowH;
+  doc.setFont("courier","bold");
+  const rightCol = colX[colX.length-1] + cols[cols.length-1].w; // right edge of table
+  const t = (label, val) => doc.text(`${label}: ${val}`, rightCol, y, {align:"right"});
+  t("Incoming Total", `$${Math.abs(incomingTotal).toFixed(2)}`); y += rowH;
+  t("Outgoing Total", `-$${Math.abs(outgoingTotal).toFixed(2)}`); y += rowH;
+  t("Net Total",      (netTotal >= 0 ? "" : "-") + `$${Math.abs(netTotal).toFixed(2)}`);
+
+  // show in modal
+  const filename = `Invoice_${loc}_${s}_${e}.pdf`;
+  const blobUri = doc.output("bloburi");
+  $("invoice-iframe").src = blobUri;
+  $("invoice-modal").style.display = "block";
+  window.__lastPDF = doc;
+  window.__lastPDFName = filename;
+}
+
     // ------------------------------------------------------------------------
 
     function changeMonth(offset){
