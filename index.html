@@ -190,17 +190,29 @@
       setAdmin(!!u);
     });
         
-    (function writeProbe(){
+(function writeProbe(){
+  // Use a valid logs path so rules allow it
+  const store = "__probe";
+  const month = new Date().toISOString().slice(0,7); // YYYY-MM
+  const keyRef = firebase.database().ref(`logs/${store}/${month}`).push();
+  const probeRow = {
+    date: "1970-01-01",
+    from: "__probe",
+    to: "__probe",
+    product: "probe",
+    unit: "unit",
+    amount: 0
+  };
+  keyRef.set(probeRow)
+    .then(() => keyRef.remove())
+    .catch(e => {
+      console.error("Probe write blocked:", e);
       const statusEl = document.getElementById('fb-status');
-      const ref = firebase.database().ref('__probe').push();
-      ref.set({ ts: Date.now() })
-        .then(() => ref.remove())
-        .catch(e => {
-          console.error('Probe write blocked:', e);
-          alert('Database write blocked: ' + (e?.code || e?.message || e));
-          if (statusEl) statusEl.innerHTML = 'Firebase: <strong class="err">connected (no write)</strong>';
-        });
-    })();
+      alert("Database write blocked: " + (e?.code || e?.message || e));
+      if (statusEl) statusEl.innerHTML = 'Firebase: <strong class="err">connected (no write)</strong>';
+    });
+})();
+
 
 
     // ----- Static data -----
