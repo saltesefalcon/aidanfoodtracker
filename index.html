@@ -299,29 +299,46 @@
     }
 
     async function addTransfer(){
-      const date = $("date").value, from = $("from").value, to = $("to").value;
-      if(!date||!from||!to||from===to) return alert("Select valid date/from/to.");
-      selectedMonth = date.slice(0,7);
-      const groups = document.querySelectorAll('.item-group');
-      for(const g of groups){
-        const product = g.querySelector('[name="product"]').value.trim();
-        const amt     = parseFloat(g.querySelector('[name="amount"]').value);
-        const unit    = g.querySelector('[name="unit"]').value;
-        const cpuRaw  = g.querySelector('[name="cost"]').value;
-        const cpu     = cpuRaw==="" ? null : parseFloat(cpuRaw);
-        if(!product||isNaN(amt)) return alert("Complete all fields.");
-        const key = db.ref('logs').push().key;
-        const out = { date, from, to, product, unit, costPerUnit:cpu, amount:-amt };
-        const inLog = { date, from, to, product, unit, costPerUnit:cpu, amount: amt };
-        const upd={};
-        upd[`logs/${from}/${selectedMonth}/${key}`]=out;
-        upd[`logs/${to}/${selectedMonth}/${key}`]=inLog;
-        await db.ref().update(upd);
-      }
-      $("items-container").innerHTML=""; $("date").valueAsDate=new Date();
-      $("from").selectedIndex=$("to").selectedIndex=0;
-      addItem(); loadLogs();
+  const date = $("date").value, from = $("from").value, to = $("to").value;
+  if(!date||!from||!to||from===to) return alert("Select valid date/from/to.");
+  selectedMonth = date.slice(0,7);
+  const groups = document.querySelectorAll('.item-group');
+
+  try {
+    for (const g of groups) {
+      const product = g.querySelector('[name="product"]').value.trim();
+      const amt     = parseFloat(g.querySelector('[name="amount"]').value);
+      const unit    = g.querySelector('[name="unit"]').value;
+      const cpuRaw  = g.querySelector('[name="cost"]').value;
+      const cpu     = cpuRaw === "" ? null : parseFloat(cpuRaw);
+      const comment = g.querySelector('[name="comment"]').value || "";
+
+      if (!product || isNaN(amt)) return alert("Complete all fields.");
+
+      const key   = firebase.database().ref('logs').push().key;
+      const out   = { date, from, to, product, unit, costPerUnit: cpu, comment, amount: -amt };
+      const inLog = { date, from, to, product, unit, costPerUnit: cpu, comment, amount:  amt };
+
+      const upd = {};
+      upd[`logs/${from}/${selectedMonth}/${key}`] = out;
+      upd[`logs/${to}/${selectedMonth}/${key}`]   = inLog;
+
+      await firebase.database().ref().update(upd);
     }
+  } catch (e) {
+    console.error("Submit failed:", e);
+    alert("Submit failed: " + (e?.code || e?.message || e));
+    return; // stop resetting the form on failure
+  }
+
+  // success UI reset
+  $("items-container").innerHTML = "";
+  $("date").valueAsDate = new Date();
+  $("from").selectedIndex = $("to").selectedIndex = 0;
+  addItem();
+  loadLogs();
+}
+
 
     // ------- Location + Date Range Invoice (monospace, clean columns) -------
     async function buildRangeInvoice(){
