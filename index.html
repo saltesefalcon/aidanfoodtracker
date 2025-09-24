@@ -430,16 +430,17 @@ async function buildRangeInvoice(){
 
   // table columns (fixed widths so headers never collide)
   // total width ~ contentW; adjust widths here if you need more/less space
-  const cols = [
-    { key:"date",        label:"Date",      w: 110, align:"left"  }, // YYYY-MM-DD fits
-    { key:"direction",   label:"Dir",       w: 50,  align:"left"  },
-    { key:"counterparty",label:"Counterparty", w: 200, align:"left" },
-    { key:"product",     label:"Product",   w: 160, align:"left"  },
-    { key:"qty",         label:"Qty",       w: 50,  align:"right" },
-    { key:"unit",        label:"Unit",      w: 60,  align:"left"  },
-    { key:"cpu",         label:"Unit $",    w: 70,  align:"right" },
-    { key:"lineValue",   label:"Total $",   w: 90,  align:"right" }
-  ];
+const cols = [
+  { key:"date",        label:"Date",        w: 100, align:"left"  },
+  { key:"direction",   label:"Dir",         w: 50,  align:"left"  },
+  { key:"counterparty",label:"Counterparty",w: 200, align:"left"  },
+  { key:"product",     label:"Product",     w: 180, align:"left"  },
+  { key:"qty",         label:"Qty",         w: 70,  align:"right" },
+  { key:"unit",        label:"Unit",        w: 80,  align:"left"  },
+  { key:"cpu",         label:"Unit $",      w: 100, align:"right" },
+  { key:"lineValue",   label:"Line Total",  w: 120, align:"right" }
+];
+
 
   // compute x positions
   let x = M, y = M + 110;
